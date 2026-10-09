@@ -1,5 +1,8 @@
+build/
+.build/
+*.xcodeproj
+*.xcworkspace
 .DS_Store
-/.build
 /Packages
 xcuserdata/
 DerivedData/
