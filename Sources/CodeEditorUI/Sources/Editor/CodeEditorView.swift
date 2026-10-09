@@ -13,6 +13,7 @@ public struct CodeEditorView: View {
     let editorState: EditorState
 
     @State private var sourceEditorState = SourceEditorState()
+    @State private var textCoordinator = DocumentTextCoordinator()
 
     public init(document: CodeEditorCore.Document, theme: Theme, editorState: EditorState) {
         self.document = document
@@ -26,13 +27,18 @@ public struct CodeEditorView: View {
             language: document.language.codeLanguage,
             configuration: configuration,
             state: $sourceEditorState,
-            undoManager: undoManager
+            undoManager: undoManager,
+            coordinators: [textCoordinator]
         )
         .background(theme.background.color)
         .onChange(of: sourceEditorState.cursorPositions) { _, positions in
             syncSelection(with: positions)
         }
         .onChange(of: document.id) { _, _ in
+            // SourceEditor does not diff text on update — only language, configuration
+            // and highlight providers. Without this, switching tabs keeps the previous
+            // document on screen.
+            textCoordinator.reload(text: document.content)
             editorState.syncSelection(of: document)
         }
         .task {

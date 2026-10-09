@@ -47,12 +47,13 @@ public struct StatusBarView: View {
         }
     }
 
+    /// Opaque base first, then material: the status bar also sits flush against a scroll view,
+    /// and a translucent fill lets overscrolled content bleed through. See `TabBarView.stripFill`.
     @ViewBuilder
     private var backgroundFill: some View {
+        Rectangle().fill(appState.theme.background.color)
         if appState.theme.chrome.usesMaterials {
             Rectangle().fill(.thinMaterial)
-        } else {
-            Rectangle().fill(appState.theme.chrome.barBackground.color)
         }
     }
 

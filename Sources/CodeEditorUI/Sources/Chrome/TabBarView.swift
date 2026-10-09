@@ -63,13 +63,18 @@ public struct TabBarView: View {
 
     // MARK: - Strip
 
-    /// Materials when the palette allows them; the token fill otherwise.
+    /// An opaque canvas-coloured base under the material.
+    ///
+    /// The strip sits directly above the editor with no separator, and an `NSScrollView`
+    /// draws its content outside its bounds while rubber-band scrolling. A translucent
+    /// material lets that overscrolled content — including the gutter — show through and
+    /// appear to overlap the tab labels. The base kills the bleed-through while keeping the
+    /// material's tint and the window-focus response.
     @ViewBuilder
     private var stripFill: some View {
+        Rectangle().fill(theme.background.color)
         if theme.chrome.usesMaterials {
             Rectangle().fill(.thinMaterial)
-        } else {
-            Rectangle().fill(theme.chrome.barBackground.color)
         }
     }
 
@@ -105,7 +110,9 @@ public struct TabBarView: View {
                     .help("Unsaved changes")
             }
 
-            Text(document.title)
+            // `name`, not `title`: title appends " *" when modified, and the dot
+            // beside the label already says that. Two indicators for one state.
+            Text(document.name)
                 .font(Typography.tabLabel)
                 .lineLimit(1)
                 .truncationMode(.middle)

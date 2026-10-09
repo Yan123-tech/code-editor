@@ -187,16 +187,25 @@ public struct FileExplorerView: View {
         }
     }
 
-    /// The disclosure chevron. Decorative, not a control: selecting the row is what
-    /// expands a folder, so a second tap target here would toggle it twice.
+    /// The disclosure chevron. A real control: expansion hangs off the selection change,
+    /// so a folder that is *already* selected produces no change and nothing would toggle.
+    /// Selecting it first also makes the row selection agree with the chevron, which is
+    /// what stops the two from cancelling out.
     @ViewBuilder
     private func disclosureControl(for item: FileSystemItem) -> some View {
         if item.isDirectory {
-            Image(systemName: fileSystemManager.isExpanded(item.url) ? "chevron.down" : "chevron.right")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.tertiary)
-                .frame(width: 12, height: 12)
-                .accessibilityHidden(true)
+            Button {
+                selection = item
+                fileSystemManager.toggleExpansion(of: item)
+            } label: {
+                Image(systemName: fileSystemManager.isExpanded(item.url) ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 12, height: 12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(fileSystemManager.isExpanded(item.url) ? "Collapse" : "Expand")
         } else {
             Color.clear.frame(width: 12, height: 12)
         }
