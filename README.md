@@ -47,6 +47,32 @@ Run the tests with:
 swift test
 ```
 
+Format and lint with `swift-format`, which ships inside the Xcode toolchain:
+
+```bash
+swift-format format --in-place --recursive --configuration .swift-format Sources Tests
+swift-format lint --recursive --strict --configuration .swift-format Sources Tests
+```
+
+## Continuous integration
+
+CI runs two jobs, both of which work on any hosted macOS runner:
+
+| Job | What it does |
+|---|---|
+| Format | `swift-format lint --strict`, then reformat and fail if `git diff` is non-empty |
+| Syntax | `swiftc -parse` on every source file |
+
+**Build and test do not run in CI.** The package declares `swift-tools-version: 6.4`
+because `CodeEditSourceEditor` 0.15 needs SwiftPM 6.4 to generate its resource bundles, and
+no hosted runner carries it — they top out at 6.3.3. Lowering the manifest to 6.3 clears
+SwiftPM but then fails inside a dependency: `CodeEditSymbols` 0.2.3 declares no resources in
+its own manifest, so SwiftPM 6.3 does not emit `Bundle.module`.
+
+So `swift build` and `swift test` are a local and release-time gate for now. That means CI
+does not catch type errors or test failures; if you add a self-hosted runner with Xcode 26.4,
+add a `build` job and drop the caveat.
+
 ## Project layout
 
 | Module | Responsibility |
@@ -97,7 +123,8 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full roadmap.
 - Branching model and PR flow: [docs/BRANCHING.md](docs/BRANCHING.md)
 - Commit types and scopes: [docs/COMMITTING.md](docs/COMMITTING.md)
 
-CI runs `swift build` and `swift test` on macOS for every push and PR.
+Before pushing, run `swift build && swift test` locally — CI checks formatting and syntax
+only, for the toolchain reason described above.
 
 ## License
 
