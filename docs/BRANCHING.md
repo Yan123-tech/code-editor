@@ -1,7 +1,12 @@
 # Branching
 
 `main` is the only long-lived branch. It must build and have green tests at every
-commit, because CI runs on it and it is what gets tagged.
+commit, and it is what gets tagged.
+
+That obligation is on you, not on CI: the hosted runners cannot build this package yet
+(see the CI section of the README). Before opening a PR, run `swift build && swift test`
+and `swift-format lint --strict` locally. CI will catch formatting drift and malformed
+source; it will not catch a type error.
 
 Work on short-lived branches that branch from the latest `main`:
 
