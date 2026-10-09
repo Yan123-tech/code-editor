@@ -65,6 +65,11 @@ public struct Theme: Sendable, Equatable {
     public var function: EditorColor
     public var property: EditorColor
 
+    /// The system appearance this palette should force on the window, so materials
+    /// and system controls agree with the canvas. Declared per palette rather than
+    /// derived — see `ThemeManager.isDark` for why deriving does not work.
+    public var colorScheme: ColorScheme
+
     public init(
         background: EditorColor,
         text: EditorColor,
@@ -82,7 +87,8 @@ public struct Theme: Sendable, Equatable {
         type: EditorColor,
         variable: EditorColor,
         function: EditorColor,
-        property: EditorColor
+        property: EditorColor,
+        colorScheme: ColorScheme = .dark
     ) {
         self.background = background
         self.text = text
@@ -101,6 +107,7 @@ public struct Theme: Sendable, Equatable {
         self.variable = variable
         self.function = function
         self.property = property
+        self.colorScheme = colorScheme
     }
 
     /// One Dark Plus-ish palette.
@@ -121,7 +128,8 @@ public struct Theme: Sendable, Equatable {
         type: EditorColor(hex: "#4ec9b0"),
         variable: EditorColor(hex: "#9cdcfe"),
         function: EditorColor(hex: "#dcdcaa"),
-        property: EditorColor(hex: "#d4d4d4")
+        property: EditorColor(hex: "#d4d4d4"),
+        colorScheme: .dark
     )
 
     /// A light counterpart to `dark`.
@@ -142,7 +150,8 @@ public struct Theme: Sendable, Equatable {
         type: EditorColor(hex: "#267f99"),
         variable: EditorColor(hex: "#001080"),
         function: EditorColor(hex: "#795e26"),
-        property: EditorColor(hex: "#1f1f1f")
+        property: EditorColor(hex: "#1f1f1f"),
+        colorScheme: .light
     )
 
     /// Maximum contrast, for accessibility.
@@ -163,7 +172,8 @@ public struct Theme: Sendable, Equatable {
         type: EditorColor(hex: "#66ccff"),
         variable: EditorColor(hex: "#ffffff"),
         function: EditorColor(hex: "#ff99cc"),
-        property: EditorColor(hex: "#ffffff")
+        property: EditorColor(hex: "#ffffff"),
+        colorScheme: .dark
     )
 
     public static let all: [Theme] = [.dark, .light, .highContrast]
@@ -209,8 +219,15 @@ public final class ThemeManager {
         Theme.all.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
+    /// Whether the palette forces a dark system appearance.
+    ///
+    /// Reads the declared `colorScheme`. The previous implementation compared the
+    /// background's red and blue channels, which returns `false` for any neutral
+    /// background — `#1e1e1e` is `30 < 30` — so the Dark and High Contrast palettes
+    /// rendered all system chrome in light mode. Do not derive this from colour
+    /// arithmetic again.
     public var isDark: Bool {
-        currentTheme.background.red < currentTheme.background.blue
+        currentTheme.colorScheme == .dark
     }
 }
 
