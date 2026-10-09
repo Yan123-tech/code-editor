@@ -244,7 +244,8 @@ public final class FileSystemManager {
 
         do {
             let contents = try provider.contentsOfDirectory(at: url)
-            let items = contents
+            let items =
+                contents
                 .filter { !$0.lastPathComponent.hasPrefix(".") || $0.lastPathComponent == ".gitignore" }
                 .map { FileSystemItem(url: $0, fileSystemProvider: provider) }
                 .sorted(by: Self.sorted)

@@ -269,7 +269,7 @@ public enum SymbolKind: Int, Codable, Sendable {
     case array = 16
     case object = 17
     case key = 18
-    case null_ = 19
+    case nullValue = 19
     case boolean = 20
     case arrayElement = 21
 }

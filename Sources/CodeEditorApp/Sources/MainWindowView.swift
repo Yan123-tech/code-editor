@@ -1,6 +1,6 @@
-import SwiftUI
 import CodeEditorCore
 import CodeEditorUI
+import SwiftUI
 
 /// The app window: sidebar, tab bar, editor, terminal, status bar.
 struct MainWindowView: View {

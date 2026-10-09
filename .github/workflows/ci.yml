@@ -11,28 +11,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build and test
+  format:
+    name: Format
     runs-on: macos-latest
-    # This job cannot pass yet. Package.swift declares swift-tools-version 6.4 and
-    # CodeEditSourceEditor 0.15 needs SwiftPM 6.4 to generate its resource bundles;
-    # hosted runners top out at 6.3.x, and no runner image or Xcode version reaches 6.4.
-    # Lowering the manifest to 6.3 gets past SwiftPM but then fails in a dependency:
-    #   CodeEditSymbols 0.2.3 → 'Bundle' has no member 'module'
-    # so the toolchain is the constraint, not our source. Running non-blocking so the
-    # steps still report the real state. Remove this line when a runner ships 6.4.
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Show toolchain
+        run: swift --version
+
+      # swift-format ships inside the Xcode toolchain, so this runs on every runner
+      # regardless of which Swift version it carries. `lint` exits non-zero on warnings;
+      # `--strict` promotes the softer diagnostics too.
+      - name: Lint
         run: |
-          xcode-select -p
-          swift --version
+          xcrun swift-format lint --recursive --strict --configuration .swift-format Sources Tests
 
-      - name: Build
-        run: swift build
+      # Reformat in place, then fail if git sees a change: that means the committed
+      # formatting is not what the formatter produces.
+      - name: Check formatting is applied
+        run: |
+          xcrun swift-format format --in-place --recursive --configuration .swift-format Sources Tests
+          if ! git diff --quiet; then
+            echo "::error::Formatting differs. Run:"
+            echo "::error::swift-format format --in-place --recursive --configuration .swift-format Sources Tests"
+            git --no-pager diff --stat
+            exit 1
+          fi
 
-      - name: Test
-        run: swift test
+  syntax:
+    name: Syntax
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      # Type-checking needs the full dependency graph, which needs SwiftPM 6.4 for
+      # CodeEditSourceEditor 0.15's resource bundles. Parsing does not, so this is
+      # the strongest check available on a hosted runner today. See README.
+      - name: Parse every source file
+        run: |
+          rc=0
+          while read -r file; do
+            if ! output=$(swiftc -parse "$file" 2>&1); then
+              echo "::error file=${file}::$(echo "$output" | head -1)"
+              rc=1
+            fi
+          done < <(find Sources Tests -name '*.swift')
+          exit $rc
+
+# Build and test run locally and in release, not here: the package declares
+# swift-tools-version 6.4 and CodeEditSourceEditor 0.15 needs SwiftPM 6.4 to
+# generate its resource bundles, while hosted runners top out at 6.3.3. Lowering the
+# manifest to 6.3 fails inside a dependency (CodeEditSymbols 0.2.3 has no resources
+# declared, so SwiftPM 6.3 does not emit Bundle.module). Add a `build` job here when
+# a runner ships 6.4.

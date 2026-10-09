@@ -23,20 +23,24 @@ public struct Language: Sendable, Equatable, Hashable {
 }
 
 /// Standard document languages.
-public extension Language {
-    static let swift = Language(identifier: "swift", displayName: "Swift", fileExtensions: ["swift"])
-    static let javascript = Language(identifier: "javascript", displayName: "JavaScript", fileExtensions: ["js", "jsx", "mjs", "cjs"])
-    static let typescript = Language(identifier: "typescript", displayName: "TypeScript", fileExtensions: ["ts", "tsx"])
-    static let python = Language(identifier: "python", displayName: "Python", fileExtensions: ["py"])
-    static let json = Language(identifier: "json", displayName: "JSON", fileExtensions: ["json"])
-    static let markdown = Language(identifier: "markdown", displayName: "Markdown", fileExtensions: ["md", "markdown"])
-    static let html = Language(identifier: "html", displayName: "HTML", fileExtensions: ["html", "htm"])
-    static let css = Language(identifier: "css", displayName: "CSS", fileExtensions: ["css", "scss", "sass"])
-    static let shell = Language(identifier: "shell", displayName: "Shell", fileExtensions: ["sh", "bash", "zsh"])
-    static let yaml = Language(identifier: "yaml", displayName: "YAML", fileExtensions: ["yml", "yaml"])
-    static let toml = Language(identifier: "toml", displayName: "TOML", fileExtensions: ["toml"])
-    static let text = Language(identifier: "plaintext", displayName: "Plain Text", fileExtensions: ["txt"])
-    static let unknown = Language(identifier: "plaintext", displayName: "Plain Text")
+extension Language {
+    public static let swift = Language(identifier: "swift", displayName: "Swift", fileExtensions: ["swift"])
+    public static let javascript = Language(
+        identifier: "javascript", displayName: "JavaScript", fileExtensions: ["js", "jsx", "mjs", "cjs"])
+    public static let typescript = Language(
+        identifier: "typescript", displayName: "TypeScript", fileExtensions: ["ts", "tsx"])
+    public static let python = Language(identifier: "python", displayName: "Python", fileExtensions: ["py"])
+    public static let json = Language(identifier: "json", displayName: "JSON", fileExtensions: ["json"])
+    public static let markdown = Language(
+        identifier: "markdown", displayName: "Markdown", fileExtensions: ["md", "markdown"])
+    public static let html = Language(identifier: "html", displayName: "HTML", fileExtensions: ["html", "htm"])
+    public static let css = Language(identifier: "css", displayName: "CSS", fileExtensions: ["css", "scss", "sass"])
+    public static let shell = Language(
+        identifier: "shell", displayName: "Shell", fileExtensions: ["sh", "bash", "zsh"])
+    public static let yaml = Language(identifier: "yaml", displayName: "YAML", fileExtensions: ["yml", "yaml"])
+    public static let toml = Language(identifier: "toml", displayName: "TOML", fileExtensions: ["toml"])
+    public static let text = Language(identifier: "plaintext", displayName: "Plain Text", fileExtensions: ["txt"])
+    public static let unknown = Language(identifier: "plaintext", displayName: "Plain Text")
 }
 
 // MARK: - LineEnding
@@ -208,7 +212,7 @@ public final class Document: Identifiable {
         let ext = url.pathExtension.lowercased()
         let all: [Language] = [
             .swift, .javascript, .typescript, .python, .json, .markdown,
-            .html, .css, .shell, .yaml, .toml, .text
+            .html, .css, .shell, .yaml, .toml, .text,
         ]
         return all.first { $0.fileExtensions.contains(ext) } ?? .unknown
     }
@@ -358,7 +362,8 @@ public final class Document: Identifiable {
     /// Select the line containing `offset`.
     public func selectLine(containing offset: Int) {
         guard let position = lineAndColumn(for: offset),
-              let range = range(ofLines: position.line, to: position.line) else { return }
+            let range = range(ofLines: position.line, to: position.line)
+        else { return }
         setSelection(from: range.location, to: range.location + range.length)
     }
 
