@@ -29,12 +29,19 @@ Name branches after the issue where one exists: `feature/lsp-completion` for iss
 1. `git checkout main && git pull`
 2. `git checkout -b feature/lsp-completion`
 3. Work, committing in Conventional Commits form.
-4. `swift build && swift test` locally before pushing.
+4. `swift build && swift test` and `swift-format lint --strict` locally before pushing.
 5. `git push -u origin feature/lsp-completion`
 6. Open a PR against `main`. Fill in the template.
 7. After review, squash-merge or merge with a merge commit. Squash for a branch with
    noisy intermediate commits; merge when reviewers want the sequence preserved.
 8. Delete the branch. `main` moves on.
+
+**If a PR changes what the code does, update the `.md` files in the same PR.** See
+[AGENTS.md](../AGENTS.md) for which file covers which kind of change. A stale
+[CURRENT_STATE.md](CURRENT_STATE.md) or [MEMORY.md](MEMORY.md) costs the next person real
+time.
+
+**Never rewrite history on a pushed branch.** Use `git revert`.
 
 ## Why no `develop` branch
 
