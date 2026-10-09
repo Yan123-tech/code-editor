@@ -427,6 +427,67 @@ struct FileSystemManagerTests {
         let withSlash = URL(fileURLWithPath: "/tmp/stub/")
         #expect(manager.children(of: withSlash).map(\.name) == ["a.txt"])
     }
+
+    @Test("reveal expands every ancestor of a deeply nested file")
+    func revealExpandsAncestors() async {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let sub = root.appendingPathComponent("Sources")
+        let nested = sub.appendingPathComponent("App")
+        let file = nested.appendingPathComponent("Main.swift")
+        let provider = StubProvider(directories: [root, sub, nested], files: [file: "x"])
+        let manager = FileSystemManager(provider: provider)
+
+        manager.setRoot(root)
+        await manager.load(root)
+        #expect(!manager.isExpanded(sub))
+
+        await manager.reveal(file)
+
+        #expect(manager.isExpanded(sub))
+        #expect(manager.isExpanded(nested))
+        // The file's own directory is loaded, the file itself is not a directory to expand.
+        #expect(!manager.children(of: nested).isEmpty)
+    }
+
+    @Test("reveal is a no-op outside the root")
+    func revealOutsideRoot() async {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let provider = StubProvider(directories: [root])
+        let manager = FileSystemManager(provider: provider)
+        manager.setRoot(root)
+        await manager.load(root)
+
+        await manager.reveal(URL(fileURLWithPath: "/elsewhere/thing.swift"))
+        #expect(manager.children(of: root).isEmpty)
+    }
+
+    @Test("reveal does not reload already-expanded ancestors")
+    func revealSkipsExpanded() async throws {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let sub = root.appendingPathComponent("dir")
+        let file = sub.appendingPathComponent("a.txt")
+        let provider = StubProvider(directories: [root, sub], files: [file: "a"])
+        let manager = FileSystemManager(provider: provider)
+        manager.setRoot(root)
+        await manager.load(root)
+
+        manager.toggleExpansion(of: try #require(manager.children(of: root).first))
+        await manager.load(sub)
+        await manager.reveal(file)
+        #expect(manager.isExpanded(sub))
+    }
+
+    @Test("clearError dismisses the error so an alert can close")
+    func clearErrorDismisses() {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let provider = StubProvider(files: [root: "x"])
+        let manager = FileSystemManager(provider: provider)
+        manager.setRoot(root)
+        #expect(manager.errorMessage != nil)
+
+        manager.clearError()
+        #expect(manager.errorMessage == nil)
+    }
 }
 
 // MARK: - FileSystemItem
