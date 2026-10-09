@@ -9,7 +9,12 @@ swift-format lint --strict → 0 warnings
 ```
 
 Tagged **0.1.0**. The interface has been redesigned since that tag; see
-[Redesigned interface](#redesigned-interface).
+[Redesigned interface](#redesigned-interface) and
+[#14](https://github.com/Yan123-tech/code-editor/issues/14).
+
+**Start here:** the highest-priority next step is not one of the six issues — it is guarding
+unsaved work on quit, which is the only remaining path to data loss. See
+[Next](#next).
 
 ## Redesigned interface
 
@@ -82,12 +87,16 @@ security-scoped bookmarks. See [MEMORY.md](MEMORY.md).
 
 **Untitled documents are not restored.** They have no stable identity across launches.
 
-**Session restore reopens paths, not edits.** The snapshot stores the workspace root, tab
-paths and active path — never buffer content. Quit with unsaved changes and the tab comes
-back showing what is on disk, with the edits gone and no prompt on the way out. Restoring
-buffers would mean writing them somewhere, and there is no untitled-document story yet
-either. The honest version of this feature is "reopens what you had open", not "resumes
-your session".
+**Session restore reopens paths, not edits, and nothing guards unsaved work on quit.** The
+snapshot stores the workspace root, tab paths and active path — never buffer content. Quit
+with unsaved changes and the tab comes back showing what is on disk, with the edits gone and
+no prompt on the way out. There is no `applicationShouldTerminate` handler, so the app does
+not even ask. Restoring buffers would mean writing them somewhere, and there is no
+untitled-document story yet either. The honest version of this feature is "reopens what you
+had open", not "resumes your session".
+
+This is the only remaining path to data loss in the app, which is why it tops
+[Next](#next).
 
 **No multi-cursor.** `TextSelectionManager` models multiple selections and `Document` stores
 them, but the text view drives a single caret.
@@ -123,12 +132,67 @@ extracted into `CodeEditorCore`, and the LSP transport.
 
 ## Next
 
-1. [#1](https://github.com/Yan123-tech/code-editor/issues/1) — connect `LSPClient` via a `TextViewCoordinator`; completion popup
-2. [#2](https://github.com/Yan123-tech/code-editor/issues/2) — diagnostics overlay and gutter markers
-3. [#3](https://github.com/Yan123-tech/code-editor/issues/3) — hover and go-to-definition
-4. [#6](https://github.com/Yan123-tech/code-editor/issues/6) — external change detection
-5. [#5](https://github.com/Yan123-tech/code-editor/issues/5) — PTY terminal
-6. [#4](https://github.com/Yan123-tech/code-editor/issues/4) — settings panel
+The redesign ([#14](https://github.com/Yan123-tech/code-editor/issues/14),
+[PR #13](https://github.com/Yan123-tech/code-editor/pull/13)) changed what is cheap and what
+is not, so the old ordering no longer holds. Below is what I would pick next and why —
+this is a recommendation, not a commitment. The issues are unchanged.
+
+### 1. Guard unsaved work before anything else
+
+**No issue yet — worth opening.** Session restore persists paths, never buffer content, and
+there is no prompt when the app terminates. Quit with unsaved edits and the tab reopens
+showing what is on disk, with the work gone and nothing said. This is the only gap that can
+lose data, and the redesign made it more visible by making restore feel like it resumes.
+
+Small: a termination handler that asks when modified documents are open, plus a decision
+about whether to persist buffers or not. Data loss outranks features.
+
+### 2. #1 — LSP completion
+
+The client already works; nothing calls it. `SourceEditor` takes a `completionDelegate`, so
+this is wiring rather than design — the least code for the most visible gain, and the
+project's stated purpose ([IDEA.md](IDEA.md)). The suggestion UI already exists upstream too;
+the same way ⌘F did not need building.
+
+### 3. #6 — external change detection
+
+A file changed on disk while open is silently overwritten. Also data loss, but narrower: it
+needs someone else editing the same file. A prompt on save when the modification date moved
+is enough to start; FSEvents is not required for correctness here.
+
+### 4. #2 then #3 — diagnostics, hover, go-to-definition
+
+Follow #1 naturally: they share the transport and lifecycle that #1 proves. Doing them
+together means the `TextViewCoordinator` wiring is designed once.
+
+### 5. #4 — settings panel
+
+Smallest of the six. Minimap, folding ribbon, invisibles, wrap, tab width and font size are
+already toggles in the Format menu and already persisted; the panel is moving existing
+state into a discoverable surface, not new behaviour.
+
+### 6. #5 — PTY terminal
+
+Largest and least user-visible until done. `vim` and `top` are broken today, which makes it
+feel urgent, but it is C interop behind a protocol and nothing else depends on it.
+
+### Deliberately not next
+
+- **More themes.** Each one is a palette someone maintains and reviews, for a choice most
+  users make once. Three is enough.
+- **Multi-window.** Needs per-window `AppState` first. The `Window` scene is the honest
+  single-window shape, not a compromise.
+- **Finder file associations.** Needs `CFBundleDocumentTypes` in `App-Info.plist` and
+  `.handlesExternalEvents`. Small, but it is packaging rather than capability, and it
+  should ride along with something that needs double-clicking files to work — which is
+  completion via ⌘P, not the other way round.
+
+### Housekeeping before the next branch
+
+- [#14](https://github.com/Yan123-tech/code-editor/issues/14) has one unchecked box: a human
+  visual review of the redesign. Everything else about it is verified except that.
+- `Scripts/build-app.sh` needs running from a clean checkout before it is believed again.
+  See [MEMORY.md #16](MEMORY.md#16-scriptsbuild-appsh-only-fails-from-a-clean-checkout).
 
 `feature/terminal-pty` and [PR #7](https://github.com/Yan123-tech/code-editor/pull/7) exist
 as a placeholder branch — plan only, no code.

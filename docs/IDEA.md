@@ -75,7 +75,13 @@ exists because of it.
 ## Where it is going
 
 Near term, connect the LSP client that already works: completion, diagnostics, hover,
-go-to-definition. That is issues [#1](https://github.com/Yan123-tech/code-editor/issues/1)–[#3](https://github.com/Yan123-tech/code-editor/issues/3).
+go-to-definition. That is issues [#1](https://github.com/Yan123-tech/code-editor/issues/1)–[#3](https://github.com/Yan123-tech/code-editor/issues/3). It is cheap because 0.15 already
+ships the UI — completion delegates, a find panel, folding, a minimap. The project's edge
+was never the chrome; it is the layer underneath.
+
+The interface itself was rebuilt in
+[#14](https://github.com/Yan123-tech/code-editor/issues/14), which is what makes the
+remaining work visible rather than buried in a prototype.
 
 Longer term it is unclear whether this grows into a full editor or stays a focused tool. That
 is a decision to make when there is more evidence about what is missing, not now.
