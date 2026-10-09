@@ -7,6 +7,9 @@ import SwiftUI
 struct MainWindowView: View {
     @Bindable var appState: AppState
 
+    /// Terminal height when the current drag began, so the gesture is anchored.
+    @State private var terminalDragStart: Double?
+
     init(appState: AppState) {
         self.appState = appState
     }
@@ -41,9 +44,9 @@ struct MainWindowView: View {
                 }
 
                 if appState.isTerminalVisible {
-                    Divider().overlay(appState.theme.chrome.border.color)
+                    terminalDivider
                     TerminalView(terminal: appState.terminal, theme: appState.theme)
-                        .frame(height: 220)
+                        .frame(height: appState.terminalHeight)
                 }
             }
             .background(appState.theme.background.color)
@@ -53,6 +56,14 @@ struct MainWindowView: View {
         .background(appState.theme.background.color)
         .tint(appState.theme.chrome.accent.color)
         .preferredColorScheme(appState.theme.colorScheme)
+        .overlay {
+            if appState.isQuickOpenVisible {
+                quickOpenOverlay
+            }
+        }
+        .onChange(of: appState.quickOpenQuery) { _, _ in
+            appState.updateQuickOpenResults()
+        }
         .sheet(item: $appState.pendingCreation) { pending in
             NewItemSheetView(pending: pending) { name in
                 appState.performCreation(named: name)
@@ -80,6 +91,67 @@ struct MainWindowView: View {
         } message: {
             Text(appState.errorMessage ?? "")
         }
+    }
+
+    // MARK: - Quick open
+
+    /// The palette floats near the top of the window. The scrim behind it closes
+    /// on click, matching what Esc does.
+    private var quickOpenOverlay: some View {
+        ZStack(alignment: .top) {
+            Color.black
+                .opacity(0.15)
+                .onTapGesture { appState.isQuickOpenVisible = false }
+
+            QuickOpenView(
+                query: $appState.quickOpenQuery,
+                matches: appState.quickOpenResults,
+                theme: appState.theme,
+                isIndexing: appState.quickOpenIndex.isIndexing,
+                onOpen: { url in appState.openFile(url) },
+                onClose: { appState.isQuickOpenVisible = false }
+            )
+            .padding(.top, Metrics.Space.spacious)
+        }
+    }
+
+    // MARK: - Terminal resize
+
+    /// A drag handle, not a passive hairline: the north-south cursor on hover is
+    /// the affordance, the capsule is the target.
+    private var terminalDivider: some View {
+        Rectangle()
+            .fill(appState.theme.chrome.barBackground.color)
+            .frame(height: Metrics.Height.divider)
+            .overlay {
+                Capsule()
+                    .fill(appState.theme.chrome.border.color)
+                    .frame(width: 56, height: Metrics.Height.dividerIndicator)
+            }
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeUpDown.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        if terminalDragStart == nil {
+                            terminalDragStart = appState.terminalHeight
+                        }
+                        guard let start = terminalDragStart else { return }
+                        appState.terminalHeight = min(
+                            max(start - value.translation.height, 120),
+                            600
+                        )
+                    }
+                    .onEnded { _ in
+                        terminalDragStart = nil
+                    }
+            )
     }
 
     // MARK: - Content
@@ -121,6 +193,13 @@ struct MainWindowView: View {
 
         ToolbarItemGroup(placement: .primaryAction) {
             createMenu
+
+            Button {
+                appState.toggleQuickOpen()
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .help("Quick Open (⌘P)")
 
             Button {
                 appState.toggleTerminal()

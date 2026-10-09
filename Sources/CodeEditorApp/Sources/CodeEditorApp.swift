@@ -8,7 +8,10 @@ struct CodeEditorApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup("Code Editor", id: "main-window") {
+        // A single window: AppState is shared and per-window state would fight it.
+        // A second window sharing one document set and one sidebar is a bug, not a
+        // feature; multi-window needs per-window state first.
+        Window("Code Editor", id: "main-window") {
             MainWindowView(appState: appState)
                 .frame(minWidth: 720, minHeight: 480)
                 .onReceive(
@@ -34,7 +37,7 @@ struct CodeEditorApp: App {
         // MARK: File
         CommandGroup(replacing: .newItem) {
             Button("New File") {
-                appState.newFile()
+                appState.requestCreation(kind: .file)
             }
             .keyboardShortcut("n", modifiers: .command)
 
@@ -47,6 +50,22 @@ struct CodeEditorApp: App {
                 presentOpenFilePanel()
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
+        }
+
+        CommandGroup(after: .textEditing) {
+            Button("Find…") {
+                appState.editorState.isFindVisible = true
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .disabled(appState.documentManager.activeDocument == nil)
+        }
+
+        CommandGroup(after: .toolbar) {
+            Button("Quick Open…") {
+                appState.toggleQuickOpen()
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(appState.fileSystemManager.rootURL == nil)
         }
 
         CommandGroup(replacing: .saveItem) {
@@ -100,6 +119,27 @@ struct CodeEditorApp: App {
                 isOn: Binding(
                     get: { appState.editorState.wrapLines },
                     set: { appState.editorState.setWrapLines($0) }
+                ))
+
+            Toggle(
+                "Invisible Characters",
+                isOn: Binding(
+                    get: { appState.editorState.showInvisibles },
+                    set: { appState.editorState.setShowInvisibles($0) }
+                ))
+
+            Toggle(
+                "Minimap",
+                isOn: Binding(
+                    get: { appState.editorState.showMinimap },
+                    set: { appState.editorState.setShowMinimap($0) }
+                ))
+
+            Toggle(
+                "Code Folding Ribbon",
+                isOn: Binding(
+                    get: { appState.editorState.showFoldingRibbon },
+                    set: { appState.editorState.setShowFoldingRibbon($0) }
                 ))
 
             Menu("Tab Width") {

@@ -12,6 +12,7 @@ public final class AppState {
     public var themeManager: ThemeManager
     public private(set) var editorState: EditorState
     public private(set) var terminal: TerminalSession
+    public private(set) var quickOpenIndex: QuickOpenIndex
 
     // Chrome
     public var isSidebarVisible = true
@@ -28,7 +29,24 @@ public final class AppState {
     /// regardless of whether the tab strip or the menu asked.
     public var pendingClose: CodeEditorCore.Document?
 
-    public init() {
+    // Quick open
+    public var isQuickOpenVisible = false
+    public var quickOpenQuery = ""
+    public private(set) var quickOpenResults: [QuickOpenMatch] = []
+
+    /// Terminal panel height in points, persisted. Drag-resized, never fixed.
+    public var terminalHeight: Double {
+        didSet {
+            guard oldValue != terminalHeight else { return }
+            UserDefaults.standard.set(terminalHeight, forKey: Self.terminalHeightKey)
+        }
+    }
+
+    private static let terminalHeightKey = "CodeEditor.terminalHeight"
+    private static let terminalHeightDefault: Double = 220
+    private static let terminalHeightRange: ClosedRange<Double> = 120...600
+
+    public init(restoreSession: Bool = true) {
         let fileSystemManager = FileSystemManager()
         let themeManager = ThemeManager()
         let editorState = EditorState()
@@ -40,6 +58,18 @@ public final class AppState {
         self.themeManager = themeManager
         self.editorState = editorState
         self.terminal = TerminalSession()
+        self.quickOpenIndex = QuickOpenIndex()
+
+        let stored = UserDefaults.standard.double(forKey: Self.terminalHeightKey)
+        self.terminalHeight =
+            (Self.terminalHeightRange).contains(stored)
+            ? stored
+            : Self.terminalHeightDefault
+
+        documentManager.delegate = self
+        if restoreSession {
+            restoreFromSession()
+        }
     }
 
     // MARK: - Theme
@@ -65,6 +95,80 @@ public final class AppState {
         terminal.disconnect()
         terminal.workingDirectory = url
         terminal.clear()
+        quickOpenIndex.reindex(root: url)
+        persistSession()
+    }
+
+    // MARK: - Session
+
+    /// What a relaunch would restore right now.
+    private var sessionSnapshot: SessionSnapshot {
+        SessionSnapshot(
+            rootPath: fileSystemManager.rootURL?.standardizedFileURL.path,
+            openPaths: documentManager.documents.compactMap { $0.url?.standardizedFileURL.path },
+            activePath: documentManager.activeDocument?.url?.standardizedFileURL.path
+        )
+    }
+
+    /// Persist the session whenever the set of things worth restoring changes.
+    private func persistSession() {
+        SessionStore.save(sessionSnapshot)
+    }
+
+    /// Reopen the workspace and tabs from the last session, if any. Files that no
+    /// longer exist are skipped silently; a missing root clears the snapshot.
+    private func restoreFromSession() {
+        guard let snapshot = SessionStore.load() else { return }
+
+        if let rootPath = snapshot.rootPath {
+            let root = URL(fileURLWithPath: rootPath, isDirectory: true)
+            if FileManager.default.fileExists(atPath: rootPath) {
+                fileSystemManager.setRoot(root)
+                quickOpenIndex.reindex(root: root)
+                terminal.workingDirectory = root
+            } else {
+                SessionStore.clear()
+            }
+        }
+
+        guard !snapshot.openPaths.isEmpty else { return }
+        Task { [weak self] in
+            var restored: [CodeEditorCore.Document] = []
+            for path in snapshot.openPaths {
+                guard let self, FileManager.default.fileExists(atPath: path) else { continue }
+                if let document = try? await self.openFileThrowing(URL(fileURLWithPath: path)) {
+                    restored.append(document)
+                }
+            }
+            if let activePath = snapshot.activePath,
+                let active = restored.first(where: { $0.url?.standardizedFileURL.path == activePath })
+            {
+                self?.documentManager.activate(active)
+            }
+        }
+    }
+
+    // MARK: - Quick open
+
+    /// Re-run the quick-open search. Call on every keystroke; the matcher is
+    /// linear in the index and the index caps itself.
+    public func updateQuickOpenResults() {
+        guard isQuickOpenVisible else {
+            quickOpenResults = []
+            return
+        }
+        quickOpenResults = quickOpenIndex.search(quickOpenQuery, limit: 25)
+    }
+
+    public func toggleQuickOpen() {
+        isQuickOpenVisible.toggle()
+        if isQuickOpenVisible {
+            quickOpenQuery = ""
+            if let root = fileSystemManager.rootURL, quickOpenIndex.entries.isEmpty {
+                quickOpenIndex.reindex(root: root)
+            }
+            updateQuickOpenResults()
+        }
     }
 
     // MARK: - Documents
@@ -81,7 +185,9 @@ public final class AppState {
 
     @discardableResult
     public func openFileThrowing(_ url: URL) async throws -> CodeEditorCore.Document {
-        try await documentManager.open(url)
+        let document = try await documentManager.open(url)
+        persistSession()
+        return document
     }
 
     public func newFile() {
@@ -233,5 +339,17 @@ public final class AppState {
 
     public func setTheme(named name: String) {
         themeManager.setTheme(named: name)
+    }
+}
+
+// MARK: - DocumentManagerDelegate
+
+extension AppState: DocumentManagerDelegate {
+    public func didOpenDocument(_ document: CodeEditorCore.Document) {
+        persistSession()
+    }
+
+    public func didCloseDocument(_ document: CodeEditorCore.Document) {
+        persistSession()
     }
 }
