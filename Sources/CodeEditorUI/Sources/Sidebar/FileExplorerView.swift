@@ -101,48 +101,29 @@ public struct FileExplorerView: View {
             }
         }
         .listStyle(.sidebar)
+        .onChange(of: selection) { _, newValue in
+            // Selection drives activation, as it does in Xcode's navigator:
+            // landing on a file opens it, landing on a folder expands it. Arrowing
+            // through the tree does the same, which is why the expansion lives
+            // here rather than on a tap gesture that `List` would swallow.
+            guard let newValue else { return }
+            activate(newValue)
+        }
         .onKeyPress(.return) {
-            activateSelection()
-            return .handled
-        }
-        .onKeyPress(.leftArrow) {
-            collapseSelection()
-            return .handled
-        }
-        .onKeyPress(.rightArrow) {
-            expandSelection()
+            // Return on the already-selected row changes nothing, so this is the
+            // only way to re-activate the current row.
+            if let selection { activate(selection) }
             return .handled
         }
     }
 
-    /// What a click, Return or Enter does: files open, folders toggle. Kept out of
-    /// the selection `onChange` so that arrowing through the tree does not toggle
-    /// every folder on the way past.
+    /// What selecting a row does: files open, folders toggle.
     private func activate(_ item: FileSystemItem) {
         if item.isDirectory {
             fileSystemManager.toggleExpansion(of: item)
         } else {
             onOpenFile(item.url)
         }
-    }
-
-    private func activateSelection() {
-        guard let item = selection else { return }
-        activate(item)
-    }
-
-    private func collapseSelection() {
-        guard let item = selection, item.isDirectory, fileSystemManager.isExpanded(item.url) else {
-            return
-        }
-        fileSystemManager.toggleExpansion(of: item)
-    }
-
-    private func expandSelection() {
-        guard let item = selection, item.isDirectory, !fileSystemManager.isExpanded(item.url) else {
-            return
-        }
-        fileSystemManager.toggleExpansion(of: item)
     }
 
     private func rowView(_ item: FileSystemItem) -> some View {
@@ -166,7 +147,6 @@ public struct FileExplorerView: View {
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .onTapGesture { activate(item) }
         .contextMenu {
             if item.isDirectory {
                 Button {
@@ -207,21 +187,16 @@ public struct FileExplorerView: View {
         }
     }
 
-    /// The disclosure triangle for folders, a spacer of the same width for files,
-    /// so names align whether or not their parent expands.
+    /// The disclosure chevron. Decorative, not a control: selecting the row is what
+    /// expands a folder, so a second tap target here would toggle it twice.
     @ViewBuilder
     private func disclosureControl(for item: FileSystemItem) -> some View {
         if item.isDirectory {
-            Button {
-                fileSystemManager.toggleExpansion(of: item)
-            } label: {
-                Image(systemName: fileSystemManager.isExpanded(item.url) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 12, height: 12)
-            }
-            .buttonStyle(.plain)
-            .help(fileSystemManager.isExpanded(item.url) ? "Collapse" : "Expand")
+            Image(systemName: fileSystemManager.isExpanded(item.url) ? "chevron.down" : "chevron.right")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.tertiary)
+                .frame(width: 12, height: 12)
+                .accessibilityHidden(true)
         } else {
             Color.clear.frame(width: 12, height: 12)
         }
