@@ -100,19 +100,39 @@ leaves that `UI` composes.
 | `` ⌃` `` | Toggle terminal |
 | `⇧⌘L` | Toggle dark/light theme |
 
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/IDEA.md](docs/IDEA.md) | What this is for, what it deliberately is not, design principles |
+| [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) | What works, what does not, test coverage, next steps |
+| [docs/STACK.md](docs/STACK.md) | Toolchain and dependency versions, with the reasoning for each choice |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module boundaries, data flow, concurrency, where coupling lives |
+| [docs/PROCESS.md](docs/PROCESS.md) | Local gate, branching, PRs, definition of done, releasing |
+| [docs/MEMORY.md](docs/MEMORY.md) | Constraints that are expensive to rediscover |
+| [docs/BRANCHING.md](docs/BRANCHING.md) | Branch naming and the PR flow |
+| [docs/COMMITTING.md](docs/COMMITTING.md) | Conventional Commits types and scopes |
+| [AGENTS.md](AGENTS.md) | Instructions for coding agents working here |
+
+`docs/MEMORY.md` is the one to read first. It records why CI cannot build this package, why
+`FileSystemManager` keys on paths rather than `URL`s, and which source editor API is safe to
+depend on — each of which cost real time to work out.
+
+If a change makes any of these documents wrong, fixing the document is part of the change.
+See [AGENTS.md](AGENTS.md).
+
 ## Roadmap
 
 `CodeEditorLSP` has a working transport — real `Content-Length` framing, request/response
 correlating by id, notification routing — and a `sourcekit-lsp` descriptor that resolves
-Xcode's bundled binary. It is not connected to the editor yet. Planned, in order:
+Xcode's bundled binary. It is not connected to the editor yet.
 
-1. Completion popup with fuzzy filtering and keyboard navigation
-2. Diagnostics overlay with gutter markers
-3. Hover tooltips
-4. Go-to-definition
-5. Settings panel
-
-See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full roadmap.
+1. [Completion popup](https://github.com/Yan123-tech/code-editor/issues/1)
+2. [Diagnostics overlay](https://github.com/Yan123-tech/code-editor/issues/2)
+3. [Hover and go-to-definition](https://github.com/Yan123-tech/code-editor/issues/3)
+4. [External change detection](https://github.com/Yan123-tech/code-editor/issues/6)
+5. [PTY terminal](https://github.com/Yan123-tech/code-editor/issues/5)
+6. [Settings panel](https://github.com/Yan123-tech/code-editor/issues/4)
 
 ## Contributing
 
@@ -122,6 +142,7 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full roadmap.
 
 - Branching model and PR flow: [docs/BRANCHING.md](docs/BRANCHING.md)
 - Commit types and scopes: [docs/COMMITTING.md](docs/COMMITTING.md)
+- Full workflow: [docs/PROCESS.md](docs/PROCESS.md)
 
 Before pushing, run `swift build && swift test` locally — CI checks formatting and syntax
 only, for the toolchain reason described above.
