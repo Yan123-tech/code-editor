@@ -264,6 +264,49 @@ explicit label even when the argument is a bare function reference.
 
 ---
 
+## 16. `Scripts/build-app.sh` only fails from a clean checkout
+
+It shipped with `--show-bin-path` on both of its build commands. That flag *locates* the
+output directory; it does not build. The script therefore succeeded whenever something else
+had already run `swift build`, and failed with
+
+```
+install: .build/out/Products/Release/CodeEditorApp: No such file or directory
+```
+
+when run from a clean state — pointing at a binary that was never produced.
+
+**Run it from a clean checkout before believing it works:**
+
+```bash
+rm -rf build && swift package clean && Scripts/build-app.sh
+```
+
+A build step that passes silently when it has nothing to do is worse than no build step.
+The same reasoning applies to any script here: if it can succeed while doing nothing, it
+will be believed until the one run that needs it.
+
+---
+
+## 17. A caret sits on a line but does not select it
+
+`EditorState` derived `selectedLines` from `start.line...end.line`, which for a collapsed
+caret is a one-element set. The status bar then read "1 line selected" on every freshly
+opened file — the state was never wrong about the caret, only about what counts as a
+selection.
+
+`Document.selectedLines(for:)` now returns an empty set for an empty selection. Callers that
+want the caret's line use `lineAndColumn(for:)` instead of inferring it from a selection.
+
+Tests: `Document.collapsedCaretSelectsNothing`, `.selectionReportsCoveredLines`.
+
+Worth remembering as a shape: a summary shown to a user ("3 lines selected") is a claim
+about a *state*, not about a *range*. Deriving it from the range without checking whether
+the range is degenerate is how you get a readout that is wrong in the one case everybody
+sees first.
+
+---
+
 ## Quick reference
 
 | Question | Answer |
@@ -278,4 +321,6 @@ explicit label even when the argument is a bare function reference.
 | Where do I add a spacing value? | `Metrics` in Core. The 4pt grid is enforced by a test. |
 | Why did my row tap do nothing? | #12. Drive it from `selection`. |
 | Can I derive isDark from colours? | No. #11. |
+| Why did the status bar say "1 line selected"? | #17. A caret is not a selection. |
+| Does `Scripts/build-app.sh` build? | Only since the fix in #16. Run it from clean to check. |
 | Where do I write "this does not work"? | Here, and [CURRENT_STATE.md](CURRENT_STATE.md). |

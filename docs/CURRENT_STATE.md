@@ -4,7 +4,7 @@ Last verified against `feature/ui-redesign` on 2026-10-09, Swift 6.4, macOS 27.0
 
 ```
 swift build    → Build complete
-swift test     → 66 tests in 16 suites passed
+swift test     → 68 tests in 16 suites passed
 swift-format lint --strict → 0 warnings
 ```
 
@@ -55,7 +55,7 @@ font size, tab width, word wrap, minimap, folding ribbon and invisibles.
 
 **Commands.** ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L. All wired; none are empty closures.
 
-**Tests.** 66 swift-testing cases. `FileSystemManager` and `QuickOpenIndex` are tested
+**Tests.** 68 swift-testing cases. `FileSystemManager` and `QuickOpenIndex` are tested
 against in-memory providers, so no test touches the real disk.
 
 ## Not working
@@ -97,7 +97,7 @@ one `AppState`, one document set and one sidebar. Multi-window needs per-window 
 | LineEnding | 1 | detection precedence |
 | Language | 1 | extension → language |
 | TextSelection | 2 | inverted ranges, NSRange |
-| Document | 10 | line splitting, offset math, selection clamping, insert/delete, line endings, line ranges |
+| Document | 12 | line splitting, offset math, selection clamping, insert/delete, line endings, line ranges, selected lines |
 | Document persistence | 2 | save/reload round-trip, `noURL` |
 | DocumentManager | 3 | reuse, neighbour focus, dirty tracking |
 | TextSelectionManager | 4 | primary selection, joined text |
@@ -130,13 +130,13 @@ as a placeholder branch — plan only, no code.
 
 | Module | Lines | Files |
 |---|---|---|
-| CodeEditorCore | 1437 | 8 |
+| CodeEditorCore | 1451 | 8 |
 | CodeEditorLSP | 1143 | 3 |
-| CodeEditorUI | 1843 | 11 |
+| CodeEditorUI | 1839 | 11 |
 | CodeEditorApp | 484 | 2 |
 | CodeEditorThemes | 437 | 5 |
 | CodeEditorTerminal | 245 | 1 |
-| Tests | 947 | 6 |
+| Tests | 969 | 6 |
 
 LSP is the largest module after `CodeEditorUI` and the least used. That is deliberate for
 now — it is the interesting part — but if the next three issues do not land, it becomes
