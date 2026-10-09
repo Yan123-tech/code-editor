@@ -18,11 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
-
+      # macos-latest already ships the default Xcode; selecting a version by path is
+      # brittle because runner images move it. Print it instead so a failure log says
+      # which toolchain produced it.
       - name: Show toolchain
-        run: swift --version
+        run: |
+          xcode-select -p
+          swift --version
 
       - name: Build
         run: swift build
