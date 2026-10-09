@@ -18,7 +18,7 @@ public struct TerminalView: View {
     public var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(theme.separator.color)
+            Divider().overlay(theme.chrome.border.color)
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -47,7 +47,7 @@ public struct TerminalView: View {
                 .onTapGesture { isInputFocused = true }
             }
 
-            Divider().overlay(theme.separator.color)
+            Divider().overlay(theme.chrome.border.color)
         }
         .frame(minHeight: 120, idealHeight: 200)
         .background(theme.background.color)
@@ -65,7 +65,7 @@ public struct TerminalView: View {
                 .foregroundColor(theme.text.color)
 
             Circle()
-                .fill(terminal.isConnected ? Color.green : Color.red)
+                .fill(terminal.isConnected ? theme.semantic.success.color : theme.semantic.danger.color)
                 .frame(width: 6, height: 6)
 
             if let error = terminal.connectionError {
@@ -94,7 +94,7 @@ public struct TerminalView: View {
     private var inputLine: some View {
         HStack(spacing: 0) {
             Text("$ ")
-                .foregroundColor(theme.keyword.color)
+                .foregroundColor(theme.chrome.accent.color)
             TextField("", text: $input)
                 .textFieldStyle(.plain)
                 .foregroundColor(theme.text.color)
@@ -118,7 +118,7 @@ public struct TerminalView: View {
     private func color(for type: TerminalOutputType) -> Color {
         switch type {
         case .standard: theme.text.color
-        case .errorOutput: theme.keyword.color
+        case .errorOutput: theme.semantic.danger.color
         case .info: theme.comment.color
         case .input: theme.string.color
         }

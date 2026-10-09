@@ -27,7 +27,7 @@ public struct FileExplorerView: View {
     public var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(theme.separator.color)
+            Divider().overlay(theme.chrome.border.color)
 
             Group {
                 if let root = fileSystemManager.rootURL {
@@ -152,7 +152,7 @@ public struct FileExplorerView: View {
 
             Image(systemName: item.iconName)
                 .font(.system(size: 11))
-                .foregroundColor(item.isDirectory ? theme.keyword.color : theme.secondaryText.color)
+                .foregroundColor(item.isDirectory ? theme.chrome.accent.color : theme.secondaryText.color)
                 .frame(width: 14)
 
             Text(item.name)

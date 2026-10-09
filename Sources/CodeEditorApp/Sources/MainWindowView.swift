@@ -29,7 +29,7 @@ struct MainWindowView: View {
                 }
 
                 if appState.isTerminalVisible {
-                    Divider().overlay(appState.theme.separator.color)
+                    Divider().overlay(appState.theme.chrome.border.color)
                     TerminalView(terminal: appState.terminal, theme: appState.theme)
                         .frame(height: 220)
                 }
@@ -37,7 +37,7 @@ struct MainWindowView: View {
             .background(appState.theme.background.color)
         }
         .background(appState.theme.background.color)
-        .tint(appState.theme.keyword.color)
+        .tint(appState.theme.chrome.accent.color)
         .preferredColorScheme(appState.themeManager.isDark ? .dark : .light)
         .alert("Code Editor", isPresented: errorBinding) {
             Button("OK", role: .cancel) { appState.errorMessage = nil }
@@ -110,7 +110,7 @@ private struct TabBar: View {
             .help("New File (⌘N)")
         }
         .frame(height: 28)
-        .background(appState.theme.statusBarBackground.color)
+        .background(appState.theme.chrome.barBackground.color)
     }
 
     private func tab(for document: CodeEditorCore.Document) -> some View {
@@ -146,7 +146,7 @@ private struct TabBar: View {
         .background(isActive ? appState.theme.background.color : .clear)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(isActive ? appState.theme.keyword.color : .clear)
+                .fill(isActive ? appState.theme.chrome.accent.color : .clear)
                 .frame(height: 1)
         }
     }
@@ -184,7 +184,7 @@ private struct StatusBar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 3)
         .frame(height: 20)
-        .background(appState.theme.statusBarBackground.color)
+        .background(appState.theme.chrome.barBackground.color)
     }
 }
 

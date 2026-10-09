@@ -1,49 +1,12 @@
 import SwiftUI
 
-// MARK: - EditorColor
-
-/// An sRGB color that can be declared from hex in code and handed to AppKit or SwiftUI.
-public struct EditorColor: Sendable, Equatable, Hashable {
-    public let red: Double
-    public let green: Double
-    public let blue: Double
-    public let alpha: Double
-
-    public init(red: Double, green: Double, blue: Double, alpha: Double = 1) {
-        self.red = red
-        self.green = green
-        self.blue = blue
-        self.alpha = alpha
-    }
-
-    /// Parse `#rrggbb` or `#rrggbbaa`. Falls back to black on malformed input.
-    public init(hex: String) {
-        var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("#") { value.removeFirst() }
-
-        var number: UInt64 = 0
-        guard value.count == 6 || value.count == 8, Scanner(string: value).scanHexInt64(&number) else {
-            self.init(red: 0, green: 0, blue: 0)
-            return
-        }
-
-        let hasAlpha = value.count == 8
-        self.init(
-            red: Double((number >> (hasAlpha ? 24 : 16)) & 0xFF) / 255,
-            green: Double((number >> (hasAlpha ? 16 : 8)) & 0xFF) / 255,
-            blue: Double((number >> (hasAlpha ? 8 : 0)) & 0xFF) / 255,
-            alpha: hasAlpha ? Double(number & 0xFF) / 255 : 1
-        )
-    }
-
-    public var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha) }
-
-    public var nsColor: NSColor { NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha) }
-}
-
 // MARK: - Theme
 
-/// Colors used by the editor chrome and for syntax highlighting.
+/// The palette for one appearance: the code canvas, the syntax tokens, the chrome
+/// around them, and the system appearance the window should force.
+///
+/// The canvas and syntax fields feed `EditorTheme` through the bridge in
+/// `CodeEditorUI`; the `chrome` and `semantic` groups feed the window chrome.
 public struct Theme: Sendable, Equatable {
     public var background: EditorColor
     public var text: EditorColor
@@ -52,8 +15,6 @@ public struct Theme: Sendable, Equatable {
     public var currentLine: EditorColor
     public var selection: EditorColor
     public var cursor: EditorColor
-    public var statusBarBackground: EditorColor
-    public var separator: EditorColor
 
     // Syntax highlighting
     public var keyword: EditorColor
@@ -70,6 +31,12 @@ public struct Theme: Sendable, Equatable {
     /// derived — see `ThemeManager.isDark` for why deriving does not work.
     public var colorScheme: ColorScheme
 
+    /// Window chrome tokens. See `Chrome`.
+    public var chrome: Chrome
+
+    /// Status colors. See `Semantic`.
+    public var semantic: Semantic
+
     public init(
         background: EditorColor,
         text: EditorColor,
@@ -78,8 +45,6 @@ public struct Theme: Sendable, Equatable {
         currentLine: EditorColor,
         selection: EditorColor,
         cursor: EditorColor,
-        statusBarBackground: EditorColor,
-        separator: EditorColor,
         keyword: EditorColor,
         string: EditorColor,
         comment: EditorColor,
@@ -88,7 +53,9 @@ public struct Theme: Sendable, Equatable {
         variable: EditorColor,
         function: EditorColor,
         property: EditorColor,
-        colorScheme: ColorScheme = .dark
+        colorScheme: ColorScheme = .dark,
+        chrome: Chrome,
+        semantic: Semantic
     ) {
         self.background = background
         self.text = text
@@ -97,8 +64,6 @@ public struct Theme: Sendable, Equatable {
         self.currentLine = currentLine
         self.selection = selection
         self.cursor = cursor
-        self.statusBarBackground = statusBarBackground
-        self.separator = separator
         self.keyword = keyword
         self.string = string
         self.comment = comment
@@ -108,6 +73,8 @@ public struct Theme: Sendable, Equatable {
         self.function = function
         self.property = property
         self.colorScheme = colorScheme
+        self.chrome = chrome
+        self.semantic = semantic
     }
 
     /// One Dark Plus-ish palette.
@@ -119,8 +86,6 @@ public struct Theme: Sendable, Equatable {
         currentLine: EditorColor(hex: "#2a2a2a"),
         selection: EditorColor(hex: "#264f78"),
         cursor: EditorColor(hex: "#aeafad"),
-        statusBarBackground: EditorColor(hex: "#252526"),
-        separator: EditorColor(hex: "#3c3c3c"),
         keyword: EditorColor(hex: "#569cd6"),
         string: EditorColor(hex: "#ce9178"),
         comment: EditorColor(hex: "#6a9955"),
@@ -129,7 +94,25 @@ public struct Theme: Sendable, Equatable {
         variable: EditorColor(hex: "#9cdcfe"),
         function: EditorColor(hex: "#dcdcaa"),
         property: EditorColor(hex: "#d4d4d4"),
-        colorScheme: .dark
+        colorScheme: .dark,
+        chrome: Chrome(
+            accent: EditorColor(hex: "#4c8dff"),
+            sidebarBackground: EditorColor(hex: "#181818"),
+            rowHover: EditorColor(hex: "#262626"),
+            rowSelected: EditorColor(hex: "#4c8dff2e"),
+            barBackground: EditorColor(hex: "#252526"),
+            tabActiveBackground: EditorColor(hex: "#1e1e1e"),
+            tabHoverBackground: EditorColor(hex: "#2a2a2b"),
+            panelBackground: EditorColor(hex: "#1b1b1b"),
+            overlayBackground: EditorColor(hex: "#242424"),
+            border: EditorColor(hex: "#3c3c3c"),
+            usesMaterials: true
+        ),
+        semantic: Semantic(
+            danger: EditorColor(hex: "#ff6b6b"),
+            success: EditorColor(hex: "#5bd675"),
+            warning: EditorColor(hex: "#e3b341")
+        )
     )
 
     /// A light counterpart to `dark`.
@@ -141,8 +124,6 @@ public struct Theme: Sendable, Equatable {
         currentLine: EditorColor(hex: "#f3f3f3"),
         selection: EditorColor(hex: "#add6ff"),
         cursor: EditorColor(hex: "#000000"),
-        statusBarBackground: EditorColor(hex: "#f3f3f3"),
-        separator: EditorColor(hex: "#d4d4d4"),
         keyword: EditorColor(hex: "#0000ff"),
         string: EditorColor(hex: "#a31515"),
         comment: EditorColor(hex: "#008000"),
@@ -151,10 +132,29 @@ public struct Theme: Sendable, Equatable {
         variable: EditorColor(hex: "#001080"),
         function: EditorColor(hex: "#795e26"),
         property: EditorColor(hex: "#1f1f1f"),
-        colorScheme: .light
+        colorScheme: .light,
+        chrome: Chrome(
+            accent: EditorColor(hex: "#0a66ff"),
+            sidebarBackground: EditorColor(hex: "#f6f6f6"),
+            rowHover: EditorColor(hex: "#e8e8e8"),
+            rowSelected: EditorColor(hex: "#0a66ff24"),
+            barBackground: EditorColor(hex: "#f3f3f3"),
+            tabActiveBackground: EditorColor(hex: "#ffffff"),
+            tabHoverBackground: EditorColor(hex: "#eaeaea"),
+            panelBackground: EditorColor(hex: "#fafafa"),
+            overlayBackground: EditorColor(hex: "#ffffff"),
+            border: EditorColor(hex: "#d4d4d4"),
+            usesMaterials: true
+        ),
+        semantic: Semantic(
+            danger: EditorColor(hex: "#d7263d"),
+            success: EditorColor(hex: "#1e8e3e"),
+            warning: EditorColor(hex: "#b26a00")
+        )
     )
 
-    /// Maximum contrast, for accessibility.
+    /// Maximum contrast, for accessibility. Materials are off: translucency
+    /// spends contrast, which is the one thing this palette cannot spare.
     public static let highContrast = Theme(
         background: EditorColor(hex: "#000000"),
         text: EditorColor(hex: "#ffffff"),
@@ -163,8 +163,6 @@ public struct Theme: Sendable, Equatable {
         currentLine: EditorColor(hex: "#1a1a1a"),
         selection: EditorColor(hex: "#0066cc"),
         cursor: EditorColor(hex: "#ffffff"),
-        statusBarBackground: EditorColor(hex: "#000000"),
-        separator: EditorColor(hex: "#ffffff"),
         keyword: EditorColor(hex: "#ffcc66"),
         string: EditorColor(hex: "#99cc99"),
         comment: EditorColor(hex: "#99cc99"),
@@ -173,62 +171,28 @@ public struct Theme: Sendable, Equatable {
         variable: EditorColor(hex: "#ffffff"),
         function: EditorColor(hex: "#ff99cc"),
         property: EditorColor(hex: "#ffffff"),
-        colorScheme: .dark
+        colorScheme: .dark,
+        chrome: Chrome(
+            accent: EditorColor(hex: "#ffcc66"),
+            sidebarBackground: EditorColor(hex: "#000000"),
+            rowHover: EditorColor(hex: "#1a1a1a"),
+            rowSelected: EditorColor(hex: "#333333"),
+            barBackground: EditorColor(hex: "#000000"),
+            tabActiveBackground: EditorColor(hex: "#000000"),
+            tabHoverBackground: EditorColor(hex: "#222222"),
+            panelBackground: EditorColor(hex: "#000000"),
+            overlayBackground: EditorColor(hex: "#0a0a0a"),
+            border: EditorColor(hex: "#ffffff"),
+            usesMaterials: false
+        ),
+        semantic: Semantic(
+            danger: EditorColor(hex: "#ff6b6b"),
+            success: EditorColor(hex: "#5bd675"),
+            warning: EditorColor(hex: "#ffff00")
+        )
     )
 
     public static let all: [Theme] = [.dark, .light, .highContrast]
-}
-
-// MARK: - ThemeManager
-
-/// Holds the active theme and persists the choice.
-@MainActor
-@Observable
-public final class ThemeManager {
-    public private(set) var currentTheme: Theme
-
-    private static let storageKey = "CodeEditor.selectedTheme"
-
-    public init(theme: Theme = .dark) {
-        self.currentTheme = theme
-    }
-
-    /// Restore the persisted theme, if any.
-    public func loadPersistedTheme(defaults: UserDefaults = .standard) {
-        guard let name = defaults.string(forKey: Self.storageKey) else { return }
-        if let theme = theme(named: name) {
-            currentTheme = theme
-        }
-    }
-
-    public func setTheme(_ theme: Theme, defaults: UserDefaults = .standard) {
-        currentTheme = theme
-        defaults.set(theme.name, forKey: Self.storageKey)
-    }
-
-    public func setTheme(named name: String, defaults: UserDefaults = .standard) {
-        guard let theme = theme(named: name) else { return }
-        setTheme(theme, defaults: defaults)
-    }
-
-    public func toggleDarkLight(defaults: UserDefaults = .standard) {
-        setTheme(currentTheme == .dark ? .light : .dark, defaults: defaults)
-    }
-
-    public func theme(named name: String) -> Theme? {
-        Theme.all.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
-    }
-
-    /// Whether the palette forces a dark system appearance.
-    ///
-    /// Reads the declared `colorScheme`. The previous implementation compared the
-    /// background's red and blue channels, which returns `false` for any neutral
-    /// background — `#1e1e1e` is `30 < 30` — so the Dark and High Contrast palettes
-    /// rendered all system chrome in light mode. Do not derive this from colour
-    /// arithmetic again.
-    public var isDark: Bool {
-        currentTheme.colorScheme == .dark
-    }
 }
 
 extension Theme {
