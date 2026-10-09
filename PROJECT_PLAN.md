@@ -30,7 +30,7 @@ tracked in GitHub, ordered in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 ## Quality gates
 
 - [x] Builds with no warnings
-- [x] `swift test` passes (35 tests)
+- [x] `swift test` passes (68 tests)
 - [x] `swift-format lint --strict` clean
 - [ ] CI builds the package — blocked, see [docs/MEMORY.md](docs/MEMORY.md#1-ci-cannot-build-this-package-do-not-try-to-make-it)
 - [ ] Completion works for Swift

@@ -81,6 +81,26 @@ would need a re-entrancy guard against the text view writing while SwiftUI is mi
 **Consequence:** `Document` mutations that originate outside the text view (nothing today)
 would fight the binding. If you add one, route it through the view, not around it.
 
+## Three more flows worth knowing
+
+**Find panel.** One flag, two owners. `EditorState.isFindVisible` is ours;
+`SourceEditorState.findPanelVisible` is the editor's. `CodeEditorView` syncs them both ways,
+and the panel is the authority: when the user dismisses the panel, the coordinator writes
+`findPanelVisible = false`, which we mirror back onto `EditorState`. ⌘F only ever sets our
+flag. Nothing in the app draws a find UI.
+
+**Session restore.** `AppState` is the `DocumentManagerDelegate`, so opening and closing a
+document persists a `SessionSnapshot` — workspace root, open tab paths, active path — to
+`UserDefaults` via `SessionStore`. On launch it replays it. Untitled documents are skipped
+because they have no path to replay. A vanished root clears the snapshot rather than leaving
+a window that restores nothing.
+
+**Quick open.** `QuickOpenIndex` walks the workspace off the main actor in batches and
+publishes each batch only if its generation is still current, so a superseded walk is
+dropped rather than interleaved. `QuickOpenMatcher` scores candidates per keystroke against
+what is already indexed; the palette renders and nothing else. It is a snapshot — see
+[CURRENT_STATE.md](CURRENT_STATE.md).
+
 ## Caching and identity
 
 `FileSystemManager` keys its directory cache on `url.standardizedFileURL.path`, not `URL`.
@@ -166,8 +186,12 @@ Anything that grows a filesystem dependency should use it.
   state disagrees with it. The panel stays the authority on its own visibility.
 - `TreeSitterClient.Constants.longParse` — a notification name from the upstream module.
   The editor surfaces it as a parse indicator; nothing else depends on it.
-- `Notification.Name.codeEditorOpenFolder` / `codeEditorOpenFiles` — `UI` posts, `App`
-  observes. Replace with a closure when a second consumer appears.
+- `Notification.Name.codeEditorOpenFolder` / `codeEditorOpenFiles` — **removed.** The seam
+  existed because the sidebar used to own an "Open Folder" button and could not call
+  `AppState` directly. It can now: the sidebar takes an `onCreateIn` closure and the canvas
+  empty state takes `onOpenFolder`, and the panel itself lives in `AppState`. Both
+  notifications posted and observed inside `CodeEditorApp`, which is a round trip to
+  nowhere. Call closures.
 - `FileSystemManager.load` returns rows synchronously from a cache while populating it
   asynchronously. The view re-renders as children arrive. Fine for a tree; would need
   thought for a list that must not reflow.

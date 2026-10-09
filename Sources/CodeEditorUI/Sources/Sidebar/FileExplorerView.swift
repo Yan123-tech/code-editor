@@ -264,13 +264,3 @@ public struct FileExplorerView: View {
         }
     }
 }
-
-// MARK: - Notifications
-
-extension Notification.Name {
-    /// Posted by the sidebar to ask the app to present an open-folder panel.
-    public static let codeEditorOpenFolder = Notification.Name("CodeEditor.openFolder")
-
-    /// Posted by the app with an array of `URL`s to open in the editor.
-    public static let codeEditorOpenFiles = Notification.Name("CodeEditor.openFiles")
-}

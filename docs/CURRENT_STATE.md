@@ -82,6 +82,13 @@ security-scoped bookmarks. See [MEMORY.md](MEMORY.md).
 
 **Untitled documents are not restored.** They have no stable identity across launches.
 
+**Session restore reopens paths, not edits.** The snapshot stores the workspace root, tab
+paths and active path — never buffer content. Quit with unsaved changes and the tab comes
+back showing what is on disk, with the edits gone and no prompt on the way out. Restoring
+buffers would mean writing them somewhere, and there is no untitled-document story yet
+either. The honest version of this feature is "reopens what you had open", not "resumes
+your session".
+
 **No multi-cursor.** `TextSelectionManager` models multiple selections and `Document` stores
 them, but the text view drives a single caret.
 

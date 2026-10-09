@@ -29,8 +29,9 @@ an embedded shell in the same window.
   the divider above it to resize; the height is remembered.
 - **Themes** — Dark, Light and High Contrast, persisted across launches along with font
   size, tab width, word wrap, minimap, folding ribbon and invisibles.
-- **Session restore** — reopens your workspace and tabs on launch. Untitled documents are
-  not restored.
+- **Session restore** — reopens your workspace and tabs on launch. It restores *what you
+  had open*, not your edits: unsaved buffers are not persisted, and untitled documents
+  have no path to replay.
 - **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L for theme.
 
 ### Interface notes
@@ -118,12 +119,12 @@ add a `build` job and drop the caveat.
 
 | Module | Responsibility |
 |---|---|
-| `CodeEditorCore` | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`. No UI. |
-| `CodeEditorThemes` | `Theme`, `EditorColor`, `ThemeManager` with persisted selection. |
+| `CodeEditorCore` | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `SessionStore`, `Metrics`. No UI — Foundation only. |
+| `CodeEditorThemes` | `Theme`, `Chrome`, `Semantic`, `Typography`, `EditorColor`, `ThemeManager` with persisted selection. |
 | `CodeEditorTerminal` | `TerminalSession`: shell subprocess, line-buffered scrollback, history. |
 | `CodeEditorLSP` | `JSONRPCTransport` (Content-Length framing) and `LSPClient`. Not yet wired into the UI. |
-| `CodeEditorUI` | SwiftUI views: editor, sidebar, terminal, plus `AppState`. |
-| `CodeEditorApp` | The `@main` App, menu commands, window layout. |
+| `CodeEditorUI` | SwiftUI views: editor, sidebar, tabs, status bar, empty state, quick open, terminal, plus `AppState`. |
+| `CodeEditorApp` | The `@main` App, menu commands, window layout, toolbar. |
 
 Dependencies flow one way: `Core` ← `UI` ← `App`. `Themes`, `Terminal` and `LSP` are
 leaves that `UI` composes.

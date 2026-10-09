@@ -156,14 +156,21 @@ interop and belongs behind a testable protocol.
 
 Pinned `from: "0.15.2"`, so 0.16 lands automatically. That is intentional.
 
-Exposure is contained to two files:
+Exposure is contained to three files, all in `Editor/`:
 
-- `Sources/CodeEditorUI/Sources/Editor/EditorTheme+Bridge.swift` — the only place that
-  constructs `EditorTheme.Attribute`
-- `Sources/CodeEditorUI/Sources/Editor/CodeEditorView.swift` — `SourceEditor` and
-  `SourceEditorConfiguration`
+- `EditorTheme+Bridge.swift` — the only place that constructs `EditorTheme.Attribute`
+- `CodeEditorView.swift` — `SourceEditor`, `SourceEditorConfiguration` and its nested
+  `Appearance` / `Behavior` / `Peripherals`, `InvisibleCharactersConfiguration`,
+  `BracketPairEmphasis`
+- `EditorState.swift` — `IndentOption` only, because indent is an editor preference
 
-Keep it that way. If a third file starts naming upstream types, the boundary has leaked.
+The first two are the deliberate boundary. The third is a thin type reference; if you move
+`IndentOption` out of the editor's configuration, that import can go too.
+
+**Keep it at three.** If a fourth file starts naming upstream types, the boundary has
+leaked. The count was wrong in the docs for a while — they said two while `EditorState.swift`
+had been importing it all along — which is the reason to go and count instead of repeating
+the claim.
 
 Known break: 0.8.1 → 0.15 changed the API completely (`CodeEditorSourceEditor` with
 `cursorPositions:` became `SourceEditor` with `state: SourceEditorState`), and 0.8.1 no
@@ -304,6 +311,12 @@ Worth remembering as a shape: a summary shown to a user ("3 lines selected") is 
 about a *state*, not about a *range*. Deriving it from the range without checking whether
 the range is degenerate is how you get a readout that is wrong in the one case everybody
 sees first.
+
+The same shape bit the session snapshot, and it is worth checking every "restore" feature
+against: it persists *paths*, never buffer content. Quit with unsaved changes and the tab
+returns showing what is on disk — the edits are gone and nothing said so on the way out.
+A feature named "restore" will be read as "resume"; say which one it is, in the docs and
+in the UI.
 
 ---
 

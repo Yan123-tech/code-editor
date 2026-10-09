@@ -94,7 +94,8 @@ Never imply in a commit message or PR that CI verified the build. It did not.
 - **No magic numbers in chrome.** Spacing, radii and fixed heights come from `Metrics`
   (`CodeEditorCore`); the 4pt grid is enforced by a test. Chrome type comes from
   `Typography` — semantic styles only, so it scales with the user's text size. Code keeps a
-  fixed-size SF Mono. See [MEMORY.md](docs/MEMORY.md#11) for why these rules exist.
+  fixed-size SF Mono. See [MEMORY.md](docs/MEMORY.md#11-never-derive-appearance-from-colour-arithmetic)
+  for why these rules exist.
 
 ## Traps that will bite
 
@@ -108,7 +109,8 @@ Never imply in a commit message or PR that CI verified the build. It did not.
 - A `.onTapGesture` on a row inside a `List(selection:)` never fires. Drive row behaviour
   from the selection change. See [MEMORY.md #12](docs/MEMORY.md#12-a-tap-gesture-inside-a-selection-list-is-swallowed).
 - Do not put a `.frame` on a `NavigationSplitView` column; `.navigationSplitViewColumnWidth`
-  already sizes it. See [MEMORY.md #13](docs/MEMORY.md).
+  already sizes it. See
+  [MEMORY.md #13](docs/MEMORY.md#13-navigationsplitview-columns-are-sized-in-one-place).
 
 ## Before you call it done
 

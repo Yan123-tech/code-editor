@@ -6,7 +6,7 @@
 |---|---|---|
 | Swift | 6.4 (6.4.0.34.1) | `swift-tools-version: 6.4`, Swift 6 language mode |
 | Xcode | 16+ | `ApproachableConcurrency` enabled per target |
-| macOS deployment | 14.0 | `@Observable`, `.onChange(of:initial:)` |
+| macOS deployment | 14.0 | `@Observable`, `.onChange(of:initial:)`, `.onKeyPress`, `.formStyle(.grouped)` |
 | Build system | SwiftPM | no Xcode project, no workspace |
 
 Developed against macOS 27.0.1 arm64. Nothing in the code is version-specific above 14.0;
@@ -39,9 +39,17 @@ wired, and running two text engines in one app buys nothing.
 the `SourceEditor` + `SourceEditorConfiguration` shape this code targets.
 
 Pinning is `from: "0.15.2"`, so 0.16 will be picked up automatically. That is deliberate:
-the upstream package is pre-1.0 and moves. The exposure is contained to one file —
-`Sources/CodeEditorUI/Sources/Editor/EditorTheme+Bridge.swift` — which is the only place
-that touches upstream types beyond `SourceEditor` itself. See [MEMORY.md](MEMORY.md).
+the upstream package is pre-1.0 and moves. The exposure is contained to three files under
+`Sources/CodeEditorUI/Sources/Editor/`: `CodeEditorView.swift` (`SourceEditor`,
+`SourceEditorConfiguration` and its nested `Appearance`/`Behavior`/`Peripherals`,
+`InvisibleCharactersConfiguration`, `BracketPairEmphasis`), `EditorTheme+Bridge.swift`
+(`EditorTheme` and its `Attribute`), and `EditorState.swift` for `IndentOption` alone. A
+fourth file naming upstream types means the boundary has leaked. See
+[MEMORY.md](MEMORY.md#8-codeeditsourceeditor-is-pre-10-and-moves).
+
+0.15 also ships the pieces this app had no reason to rebuild: a find-and-replace panel
+driven by `SourceEditorState.findPanelVisible`, code-folding ribbon, minimap, invisibles
+and warning-character rendering. Finding them meant not designing a ⌘F UI at all.
 
 ## Tooling
 
@@ -69,10 +77,11 @@ compile errors in the original scaffold were exactly this.
 **`NavigationSplitView` for the layout.** Resizable sidebar, system-standard behaviour, free
 on macOS 14+.
 
-**Notifications between `UI` and `App`.** `FileExplorerView` posts `.codeEditorOpenFolder`;
-`CodeEditorApp` observes it. This keeps `NSOpenPanel` out of the view and avoids `UI`
-importing `AppKit` panel code. It is a small seam to replace with a closure when a second
-consumer appears.
+**No notifications between `UI` and `App`.** There used to be: the sidebar posted
+`.codeEditorOpenFolder` because it could not call `AppState`. It can — views take closures
+(`onOpenFile`, `onCreateIn`, `onOpenFolder`) and the panel logic lives in `AppState`, not in
+a view. Both notification names are gone. `NSOpenPanel` still does not appear in the view
+layer, because `AppState` owns the commands.
 
 ## Alternatives rejected
 
@@ -83,3 +92,6 @@ consumer appears.
 | Runestone | Duplicate text engine, no tree-sitter integration. |
 | SwiftLSPClient | Abandoned upstream. The LSP layer here is small and worth owning. |
 | `develop` branch | One line of work. Doubles merge cost for nothing. See [BRANCHING.md](BRANCHING.md). |
+| Hand-rolled find/replace | 0.15 ships one. See above. |
+| Hand-rolled folding ribbon, minimap, invisibles | 0.15 ships all three as `Peripherals`. |
+| More built-in themes | Each one is a palette someone has to maintain and review, for a choice most users make once. Three is enough. |

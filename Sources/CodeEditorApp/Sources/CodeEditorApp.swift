@@ -14,19 +14,6 @@ struct CodeEditorApp: App {
         Window("Code Editor", id: "main-window") {
             MainWindowView(appState: appState)
                 .frame(minWidth: 720, minHeight: 480)
-                .onReceive(
-                    NotificationCenter.default.publisher(for: .codeEditorOpenFolder)
-                ) { _ in
-                    appState.openFolder()
-                }
-                .onReceive(
-                    NotificationCenter.default.publisher(for: .codeEditorOpenFiles)
-                ) { notification in
-                    guard let urls = notification.object as? [URL] else { return }
-                    for url in urls {
-                        appState.openFile(url)
-                    }
-                }
         }
         .defaultSize(width: 1200, height: 800)
         .commands { commands }
@@ -182,9 +169,8 @@ struct CodeEditorApp: App {
         panel.prompt = "Open"
 
         guard panel.runModal() == .OK else { return }
-        NotificationCenter.default.post(
-            name: .codeEditorOpenFiles,
-            object: panel.urls
-        )
+        for url in panel.urls {
+            appState.openFile(url)
+        }
     }
 }

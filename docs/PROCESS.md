@@ -20,7 +20,7 @@ swift build && swift test
 swift-format lint --recursive --strict --configuration .swift-format Sources Tests
 ```
 
-All three, before every push. 35 tests, about 30 seconds.
+All three, before every push. 68 tests in 16 suites, about 30 seconds.
 
 `swift-format format --in-place --recursive --configuration .swift-format Sources Tests`
 when lint complains about formatting.
