@@ -47,6 +47,30 @@ Run the tests with:
 swift test
 ```
 
+### Build the .app bundle
+
+`swift run` gives you the binary, not an application — no Dock tile, no menu bar, no
+double-clickable file. To get `build/Code Editor.app`, run:
+
+```bash
+Scripts/build-app.sh
+```
+
+The script builds in release, lays out `Contents/{MacOS,Resources}`, copies every SwiftPM
+resource bundle into `Contents/Resources` (CodeEditLanguages grammars and CodeEditSymbols
+assets are resolved through `Bundle.module`, which looks them up under `Bundle.main.resourceURL`),
+renders `AppIcon.icns` from `Scripts/make-icon.swift`, and ad-hoc signs the bundle.
+
+| Flag | Effect |
+|---|---|
+| `--debug` | Build the debug product instead of release |
+| `--install` | Also copy the bundle to `/Applications` |
+| `--open` | Launch it when the build finishes |
+
+Ad-hoc signing is enough locally and for handing the bundle to another Mac. To distribute it
+further, swap the `codesign` identity in the script for a Developer ID and notarize the zipped
+bundle.
+
 Format and lint with `swift-format`, which ships inside the Xcode toolchain:
 
 ```bash
