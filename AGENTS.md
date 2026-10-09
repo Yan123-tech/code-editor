@@ -88,6 +88,13 @@ Never imply in a commit message or PR that CI verified the build. It did not.
 - **4-space indent, 120 columns.** Enforced by `.swift-format`.
 - **`CodeEditorCore` imports `Foundation` only** — no SwiftUI, no AppKit. That is what makes
   it testable without a window server, and what makes offset arithmetic testable at all.
+- **Chrome never borrows a syntax token.** Colours come from `Theme.chrome` or
+  `Theme.semantic`. The accent was once `Theme.keyword`, which made the tab underline, folder
+  icons, the terminal prompt and terminal errors change meaning with the syntax palette.
+- **No magic numbers in chrome.** Spacing, radii and fixed heights come from `Metrics`
+  (`CodeEditorCore`); the 4pt grid is enforced by a test. Chrome type comes from
+  `Typography` — semantic styles only, so it scales with the user's text size. Code keeps a
+  fixed-size SF Mono. See [MEMORY.md](docs/MEMORY.md#11) for why these rules exist.
 
 ## Traps that will bite
 
@@ -98,6 +105,10 @@ Never imply in a commit message or PR that CI verified the build. It did not.
 - Do not give a `@MainActor` class a `deinit` that touches its state.
 - `SourceEditor` takes a `Binding<String>`; there is no push path from `Document` to the
   view. See [MEMORY.md #4](docs/MEMORY.md).
+- A `.onTapGesture` on a row inside a `List(selection:)` never fires. Drive row behaviour
+  from the selection change. See [MEMORY.md #12](docs/MEMORY.md#12-a-tap-gesture-inside-a-selection-list-is-swallowed).
+- Do not put a `.frame` on a `NavigationSplitView` column; `.navigationSplitViewColumnWidth`
+  already sizes it. See [MEMORY.md #13](docs/MEMORY.md).
 
 ## Before you call it done
 
@@ -106,6 +117,7 @@ Never imply in a commit message or PR that CI verified the build. It did not.
 - [ ] `swift-format lint --strict` clean
 - [ ] Behaviour change has a test; bug fix has a test that fails without the fix
 - [ ] New public APIs have doc comments that state the contract
+- [ ] View code with real logic moved into `CodeEditorCore` and tested there
 - [ ] The `.md` files above are still true
 
 That last item is not a formality. It is the difference between this repository and one

@@ -33,23 +33,28 @@ without an IDE around it.
 ## Shape of the thing
 
 ```
-┌──────────────────────────────────────────────────┐
-│  ⌘ commands · theme · preferences                │
-├────────────┬─────────────────────────────────────┤
-│            │  tabs                               │
-│  explorer  ├─────────────────────────────────────┤
-│  (tree)    │                                     │
-│            │  editor + tree-sitter highlighting  │
-│            │  gutter · bracket emphasis · undo   │
-│            ├─────────────────────────────────────┤
-│            │  status bar: Ln/Col, encoding       │
-├────────────┴─────────────────────────────────────┤
-│  terminal (toggleable)                           │
-└──────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│  ⌃sidebar   breadcrumb          create ⌕ terminal    │
+├────────────┬───────────────────────────────────────┤
+│            │  tabs (active merges into the canvas) │
+│  explorer  ├───────────────────────────────────────┤
+│  (tree)    │                                       │
+│            │  editor + tree-sitter highlighting    │
+│            │  gutter · bracket emphasis · undo     │
+│            ├───────────────────────────────────────┤
+│            │  status bar: Ln/Col · UTF-8 · language│
+├────────────┴───── drag handle ─────────────────────┤
+│  terminal (toggleable, resizable)                  │
+└────────────────────────────────────────────────────┘
 ```
 
 Three panels, one window, no chrome that is not doing work. The sidebar is resizable, the
-terminal hides entirely, and the editor takes whatever is left.
+terminal hides entirely and is drag-resized, and the editor takes whatever is left.
+
+Two invariants hold the interface together. **Chrome never borrows a colour from syntax** —
+window furniture reads `Theme.chrome`, status reads `Theme.semantic`. And **the chrome has
+one type ramp, one spacing grid and one set of heights**, all in code, none of them inline
+literals.
 
 ## Principles
 

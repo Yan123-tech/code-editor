@@ -183,13 +183,84 @@ inexplicably, `rm -rf .build` before debugging anything else.
 
 ## 10. History was rebuilt once
 
-The first published history contained commits that captured stale file contents, caused by
-a `git reset --hard` mid-task. The published `main` was reconstructed from scratch and
+The first published history contained commits that captured stale file contents, caused by a
+`git reset --hard` mid-task. The published `main` was reconstructed from scratch and
 verified green, so what is on the remote is correct — but part of that work was redone.
 
 The lesson is procedural and it is in [BRANCHING.md](BRANCHING.md): work on feature branches
 and merge, rather than rewriting history in place. It is much harder to lose a day's work
 that way.
+
+---
+
+## 11. Never derive appearance from colour arithmetic
+
+`ThemeManager.isDark` used to be `currentTheme.background.red < currentTheme.background.blue`.
+
+That returns **false for any neutral background** — `#1e1e1e` is `30 < 30` — so the Dark and
+High Contrast palettes forced `.preferredColorScheme(.light)` and every system-drawn control
+rendered light against a dark canvas. It looked like a styling problem and was a comparison
+operator.
+
+`Theme` now declares `colorScheme` per palette and `isDark` reads it.
+
+Tests: `ThemeManagerTests.appearanceMatchesPalette`, `.neutralBackgroundsAreNotMisread`.
+**If you add a palette, set `colorScheme` explicitly.** The initializer defaults it to
+`.dark`, which is a silent trap for a new light palette.
+
+---
+
+## 12. A tap gesture inside a selection `List` is swallowed
+
+The sidebar's file tree wanted click-a-row-to-activate. With `List(selection:)` the obvious
+`.onTapGesture` on the row **never fires** — the List's own gesture handling consumes the
+click, so the row only changed selection and nothing activated.
+
+Activation has to hang off `.onChange(of: selection)`. That is also the Xcode navigator's
+behaviour: landing on a file opens it, landing on a folder expands it, and arrowing through
+the tree does the same.
+
+Corollary: if the row also carries a button (a disclosure triangle), the button's action and
+the selection change both run, so a click toggles twice. Make such controls decorative, or
+drive one path only.
+
+Verified by arrowing onto a folder in the running app, not by clicking — synthetic clicks
+from System Events do not reach SwiftUI rows, so do not trust them as evidence either way.
+
+---
+
+## 13. `NavigationSplitView` columns are sized in one place
+
+`FileExplorerView` carried `.frame(minWidth:idealWidth:maxWidth:)` on its own root *and* the
+split view declared `.navigationSplitViewColumnWidth` on the same column. Two authorities
+for one width; the column took whichever won, and the sidebar jumped on relayout.
+
+`.navigationSplitViewColumnWidth` belongs on the column. Nothing inside the column should
+also claim a width.
+
+---
+
+## 14. `SessionStore` stores plain paths, which is only valid unsandboxed
+
+`SessionStore` persists `rootPath` and tab paths as strings. That is correct only because
+the app is not sandboxed. Under App Sandbox a path can point somewhere useless after
+relaunch and the app would restore nothing, silently.
+
+A sandboxed build must store `URL.bookmarkData(includingResourceValuesForKeys:options:)`
+and resolve with `startAccessingSecurityScopedResource()`. There is a test at
+`SessionStoreTests.roundTrip` that would still pass with bookmarks, so the suite is not the
+guard here — this note is.
+
+---
+
+## 15. `.buttonStyle(.prominent)` does not exist on macOS
+
+It is iOS. On macOS the equivalent is `.borderedProminent`. The compiler's "cannot be
+resolved without a contextual type" is a poor hint for this; the real problem is the wrong
+platform's spelling.
+
+Also: `Button` inside a SwiftUI `Menu` label, and `onExitCommand(perform:)`, both need the
+explicit label even when the argument is a bare function reference.
 
 ---
 
@@ -203,4 +274,8 @@ that way.
 | Why is the sidebar slow to show subfolders? | `load` is async and re-renders as children arrive. By design. |
 | Why does `Document` not resolve? | `SwiftUI.Document`. Qualify as `CodeEditorCore.Document`. |
 | Can I bump CodeEditSourceEditor? | Yes; watch the two files listed in #8. |
+| Where do I add a colour? | `Theme.chrome` for chrome, `Theme.semantic` for status. Never a syntax token. |
+| Where do I add a spacing value? | `Metrics` in Core. The 4pt grid is enforced by a test. |
+| Why did my row tap do nothing? | #12. Drive it from `selection`. |
+| Can I derive isDark from colours? | No. #11. |
 | Where do I write "this does not work"? | Here, and [CURRENT_STATE.md](CURRENT_STATE.md). |

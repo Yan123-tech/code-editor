@@ -16,12 +16,31 @@ them. `App` is the only target that owns a window.
 
 | Module | Lines | Owns |
 |---|---|---|
-| `CodeEditorCore` | 958 | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `Language`, `LineEnding`, `TextSelection` |
+| `CodeEditorCore` | 1437 | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `SessionStore`, `Metrics`, `Language`, `LineEnding`, `TextSelection` |
 | `CodeEditorLSP` | 1143 | `JSONRPCTransport`, `LSPClient`, wire types |
-| `CodeEditorUI` | 966 | `CodeEditorView`, `FileExplorerView`, `TerminalView`, `EditorState`, `AppState`, `Theme.editorTheme` |
-| `CodeEditorApp` | 370 | `MainWindowView`, `CodeEditorApp`, menu commands |
+| `CodeEditorUI` | 1843 | `CodeEditorView`, `FileExplorerView`, `TabBarView`, `StatusBarView`, `EmptyStateView`, `QuickOpenView`, `TerminalView`, `EditorState`, `AppState`, `Theme.editorTheme` |
+| `CodeEditorApp` | 484 | `MainWindowView`, `CodeEditorApp`, menu commands |
 | `CodeEditorTerminal` | 245 | `TerminalSession` |
-| `CodeEditorThemes` | 225 | `Theme`, `EditorColor`, `ThemeManager` |
+| `CodeEditorThemes` | 437 | `Theme`, `Chrome`, `Semantic`, `Typography`, `EditorColor`, `ThemeManager` |
+
+## Where the design system lives
+
+Two modules, split by what they may import:
+
+- **`CodeEditorThemes`** — colours and type. `Theme` holds the canvas and syntax tokens, a
+  `Chrome` group for window furniture, a `Semantic` group for status colours, and the
+  `colorScheme` the window forces. `Typography` maps roles to semantic styles.
+- **`CodeEditorCore`** — `Metrics`, the spacing scale, radii and fixed chrome heights. It is
+  pure layout arithmetic, so it stays in the Foundation-only module and its invariants are
+  testable without a window server.
+
+The rule that matters: **chrome never borrows a syntax token.** The accent used to be
+`Theme.keyword`, which meant the tab underline, folder icons, the terminal prompt and
+terminal errors all changed meaning whenever the syntax palette did.
+
+Views must not introduce a literal font size or a padding off the 4pt grid. `MetricsTests`
+fails if the grid is broken; nothing enforces the font rule automatically, so `.system(size:)`
+outside `CodeEditorThemes` is a review item.
 
 ## The rule that matters
 
@@ -124,8 +143,15 @@ others, and the union adds decoding branches nothing exercises.
 
 ## Tests
 
-`CodeEditorCore` and `CodeEditorTerminal` are tested; `CodeEditorUI` and `CodeEditorApp` are
-not, because they are view code.
+`CodeEditorCore`, `CodeEditorThemes` and `CodeEditorTerminal` are tested; `CodeEditorUI` and
+`CodeEditorApp` are not, because they are view code.
+
+The rule when view code grows real logic: **move the logic to `CodeEditorCore` and test it
+there.** The sidebar's tree flattening became `FileOutline`; quick open became
+`QuickOpenMatcher` plus `QuickOpenIndex`. Neither had to change behaviour to be tested.
+
+`UserDefaults`-backed state takes its domain from the caller rather than reaching for
+`.standard`, which is why `SessionStore` and `ThemeManager` are testable.
 
 The useful pattern is `StubProvider`: an in-memory `FileSystemProvider`, so file-system tests
 assert on URLs and names and never touch the real disk or depend on a fixture directory.
@@ -135,6 +161,11 @@ Anything that grows a filesystem dependency should use it.
 
 - `SourceEditor` and `EditorTheme.Attribute` — contained in `CodeEditorView.swift` and
   `EditorTheme+Bridge.swift`. Both are upstream, both are pre-1.0. See [STACK.md](STACK.md).
+- `SourceEditorState.findPanelVisible` — `EditorState.isFindVisible` is our flag,
+  `CodeEditorView` syncs it both ways, and the upstream coordinator opens the panel when
+  state disagrees with it. The panel stays the authority on its own visibility.
+- `TreeSitterClient.Constants.longParse` — a notification name from the upstream module.
+  The editor surfaces it as a parse indicator; nothing else depends on it.
 - `Notification.Name.codeEditorOpenFolder` / `codeEditorOpenFiles` — `UI` posts, `App`
   observes. Replace with a closure when a second consumer appears.
 - `FileSystemManager.load` returns rows synchronously from a cache while populating it

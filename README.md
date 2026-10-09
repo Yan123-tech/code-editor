@@ -21,11 +21,28 @@ an embedded shell in the same window.
 - **Tabs** — open documents, dirty-state dots, close with a save prompt.
 - **Save / Save All**, with a location prompt for untitled documents. Line endings are
   detected on load and preserved on save.
+- **Find and replace** — ⌘F, backed by the source editor's own panel.
+- **Quick open** — ⌘P, fuzzy-matching files across the workspace with the matched
+  characters highlighted.
 - **Embedded terminal** — runs your `$SHELL`, with scrollback capped at 2000 lines,
-  command history on ↑/↓, and separate stdout/stderr coloring.
+  command history on ↑/↓, selectable output, and separate stdout/stderr coloring. Drag
+  the divider above it to resize; the height is remembered.
 - **Themes** — Dark, Light and High Contrast, persisted across launches along with font
-  size, tab width and word wrap.
-- **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L for theme.
+  size, tab width, word wrap, minimap, folding ribbon and invisibles.
+- **Session restore** — reopens your workspace and tabs on launch. Untitled documents are
+  not restored.
+- **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L for theme.
+
+### Interface notes
+
+The window uses native macOS chrome: a unified toolbar with a breadcrumb, a navigator that
+opens files and expands folders on click or arrow key, a tab strip whose active tab merges
+into the editor, and a single empty state that adapts to whether a workspace is open.
+
+Design tokens are not sprinkled through the views. Colours live in `Theme.chrome` and
+`Theme.semantic` — chrome never borrows a syntax token. Spacing, radii and chrome heights
+live in `Metrics` in `CodeEditorCore`, on a 4pt grid. Chrome type is semantic, so it scales
+with your system text size; the code font stays fixed-size on purpose.
 
 ## Requirements
 
@@ -118,6 +135,8 @@ leaves that `UI` composes.
 | `⌘N` | New file |
 | `⌘O` | Open folder |
 | `⇧⌘O` | Open files |
+| `⌘F` | Find |
+| `⌘P` | Quick open |
 | `⌘S` / `⌥⌘S` | Save / Save all |
 | `⌘W` | Close tab |
 | `⌘B` | Toggle sidebar |
