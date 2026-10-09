@@ -92,29 +92,19 @@ public struct FileExplorerView: View {
 
     private func list(for root: URL) -> some View {
         List(selection: $selection) {
-            ForEach(flattenedRows(from: root)) { row in
+            ForEach(
+                FileOutline.rows(
+                    from: root,
+                    children: fileSystemManager.children(of:),
+                    isExpanded: fileSystemManager.isExpanded
+                )
+            ) { row in
                 rowView(row.item)
                     .tag(row.item)
                     .padding(.leading, CGFloat(row.depth) * Metrics.treeIndentPerLevel)
             }
         }
         .listStyle(.sidebar)
-    }
-
-    /// Flatten the expanded tree into indentable rows. Only expanded branches are
-    /// enumerated, so a large workspace costs nothing until it is opened.
-    private func flattenedRows(from directory: URL, depth: Int = 0) -> [FileRow] {
-        guard depth < 32 else { return [] }
-
-        return fileSystemManager.children(of: directory).flatMap { item -> [FileRow] in
-            guard item.isDirectory else { return [FileRow(item: item, depth: depth)] }
-
-            var result = [FileRow(item: item, depth: depth)]
-            if fileSystemManager.isExpanded(item.url) {
-                result.append(contentsOf: flattenedRows(from: item.url, depth: depth + 1))
-            }
-            return result
-        }
     }
 
     private func rowView(_ item: FileSystemItem) -> some View {
@@ -259,16 +249,6 @@ public struct FileExplorerView: View {
             errorMessage = error.localizedDescription
         }
     }
-}
-
-// MARK: - Tree rows
-
-/// A single visible row: the item plus how deep it sits in the expanded tree.
-private struct FileRow: Identifiable {
-    let item: FileSystemItem
-    let depth: Int
-
-    var id: URL { item.url }
 }
 
 // MARK: - Notifications

@@ -105,7 +105,7 @@ public enum FileSystemError: LocalizedError {
 // MARK: - FileSystemItem
 
 /// A file or directory in the file system.
-public struct FileSystemItem: Identifiable, Equatable, Hashable {
+public struct FileSystemItem: Identifiable, Equatable, Hashable, Sendable {
     public let url: URL
     public let name: String
     public let isDirectory: Bool
