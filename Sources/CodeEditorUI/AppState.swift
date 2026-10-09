@@ -24,6 +24,10 @@ public final class AppState {
     /// regardless of whether the toolbar menu or a context menu requested it.
     public var pendingCreation: PendingCreation?
 
+    /// A modified document the user asked to close. Presented as one confirmation
+    /// regardless of whether the tab strip or the menu asked.
+    public var pendingClose: CodeEditorCore.Document?
+
     public init() {
         let fileSystemManager = FileSystemManager()
         let themeManager = ThemeManager()
@@ -131,41 +135,54 @@ public final class AppState {
         }
     }
 
-    public func close(_ document: CodeEditorCore.Document) {
+    /// Ask to close a document. Clean documents close immediately; modified ones
+    /// are parked in `pendingClose` for the window's confirmation dialog.
+    public func requestClose(_ document: CodeEditorCore.Document) {
         guard document.isModified else {
             documentManager.close(document)
             return
         }
-
-        Task {
-            let alert = NSAlert()
-            alert.messageText = "Save changes to \(document.name)?"
-            alert.informativeText = "Your changes will be lost if you don't save them."
-            alert.addButton(withTitle: "Save")
-            alert.addButton(withTitle: "Don't Save")
-            alert.addButton(withTitle: "Cancel")
-
-            switch alert.runModal() {
-            case .alertFirstButtonReturn:
-                await saveThenClose(document)
-            case .alertSecondButtonReturn:
-                documentManager.close(document)
-            default:
-                break
-            }
-        }
+        pendingClose = document
     }
 
-    private func saveThenClose(_ document: CodeEditorCore.Document) async {
-        if document.isUntitled {
-            await promptForSaveLocation(for: document)
-        } else {
-            await performSave(document)
+    /// Resolve a pending close. `save` runs the save flow first; saving an untitled
+    /// document opens a location prompt, and a cancelled prompt aborts the close.
+    public func resolvePendingClose(save: Bool) async {
+        guard let document = pendingClose else { return }
+        pendingClose = nil
+
+        if save {
+            if document.isUntitled {
+                await promptForSaveLocation(for: document)
+                // A cancelled save panel leaves the document unsaved; keep it open.
+                guard !document.isModified else { return }
+            } else {
+                await performSave(document)
+                guard !document.isModified else { return }
+            }
         }
         documentManager.close(document)
     }
 
+    public func close(_ document: CodeEditorCore.Document) {
+        requestClose(document)
+    }
+
     // MARK: - Commands
+
+    /// Segments of the active document's path relative to the workspace root, for
+    /// the toolbar breadcrumb. Capped to the last three so deep paths stay legible.
+    public var breadcrumb: [String] {
+        guard let url = documentManager.activeDocument?.url else { return [] }
+        let path = url.standardizedFileURL.path
+        if let rootPath = fileSystemManager.rootURL?.standardizedFileURL.path,
+            path.hasPrefix(rootPath + "/")
+        {
+            let segments = path.dropFirst(rootPath.count + 1).split(separator: "/").map(String.init)
+            return Array(segments.suffix(3))
+        }
+        return [url.lastPathComponent]
+    }
 
     /// Where new items land when no directory is given: beside the active
     /// document, or at the workspace root. The Xcode rule.

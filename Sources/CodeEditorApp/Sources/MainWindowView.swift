@@ -1,4 +1,5 @@
 import CodeEditorCore
+import CodeEditorThemes
 import CodeEditorUI
 import SwiftUI
 
@@ -16,7 +17,7 @@ struct MainWindowView: View {
                 fileSystemManager: appState.fileSystemManager,
                 theme: appState.theme,
                 activeDocumentURL: appState.documentManager.activeDocument?.url,
-                onOpenFile: openFile,
+                onOpenFile: { url in appState.openFile(url) },
                 onCreateIn: { directory, kind in
                     appState.requestCreation(kind: kind, in: directory)
                 }
@@ -24,12 +25,19 @@ struct MainWindowView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 420)
         } detail: {
             VStack(spacing: 0) {
-                TabBar(documents: appState.documentManager.documents, appState: appState)
+                TabBarView(
+                    documents: appState.documentManager.documents,
+                    activeDocument: appState.documentManager.activeDocument,
+                    theme: appState.theme,
+                    onSelect: { document in appState.documentManager.activate(document) },
+                    onClose: { document in appState.requestClose(document) },
+                    onNew: { appState.newFile() }
+                )
 
                 editorArea
 
                 if appState.isStatusBarVisible {
-                    StatusBar(appState: appState)
+                    StatusBarView(appState: appState)
                 }
 
                 if appState.isTerminalVisible {
@@ -40,6 +48,8 @@ struct MainWindowView: View {
             }
             .background(appState.theme.background.color)
         }
+        .navigationTitle(navigationTitle)
+        .toolbar { toolbarContent }
         .background(appState.theme.background.color)
         .tint(appState.theme.chrome.accent.color)
         .preferredColorScheme(appState.theme.colorScheme)
@@ -48,6 +58,23 @@ struct MainWindowView: View {
                 appState.performCreation(named: name)
             }
         }
+        .confirmationDialog(
+            "Close “\(appState.pendingClose?.name ?? "")”?",
+            isPresented: pendingCloseBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Save & Close") {
+                Task { await appState.resolvePendingClose(save: true) }
+            }
+            Button("Discard Changes", role: .destructive) {
+                Task { await appState.resolvePendingClose(save: false) }
+            }
+            Button("Cancel", role: .cancel) {
+                appState.pendingClose = nil
+            }
+        } message: {
+            Text("Unsaved changes will be lost if you discard them.")
+        }
         .alert("Code Editor", isPresented: errorBinding) {
             Button("OK", role: .cancel) { appState.errorMessage = nil }
         } message: {
@@ -55,7 +82,7 @@ struct MainWindowView: View {
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Content
 
     @ViewBuilder
     private var editorArea: some View {
@@ -67,10 +94,98 @@ struct MainWindowView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            WelcomeView(appState: appState)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyStateView(
+                appState: appState,
+                onOpenFolder: { appState.openFolder() },
+                onNewFile: { appState.newFile() }
+            )
         }
     }
+
+    private var navigationTitle: String {
+        if let document = appState.documentManager.activeDocument {
+            return document.title
+        }
+        return appState.fileSystemManager.rootName
+    }
+
+    // MARK: - Toolbar
+
+    /// Unified toolbar: identity in the middle, creation and panels at the trailing
+    /// edge. Replaces the sidebar's hand-rolled header row.
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            breadcrumb
+        }
+
+        ToolbarItemGroup(placement: .primaryAction) {
+            createMenu
+
+            Button {
+                appState.toggleTerminal()
+            } label: {
+                Image(
+                    systemName: appState.isTerminalVisible
+                        ? "rectangle.bottomthird.inset.filled"
+                        : "rectangle.bottomthird.inset")
+            }
+            .help(appState.isTerminalVisible ? "Hide Terminal (⌃`)" : "Show Terminal (⌃`)")
+        }
+    }
+
+    /// The project-relative path of the active document, quiet and capped.
+    @ViewBuilder
+    private var breadcrumb: some View {
+        let segments = appState.breadcrumb
+        if segments.isEmpty {
+            Text(appState.fileSystemManager.rootName)
+                .font(Typography.sectionHeader)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        } else {
+            HStack(spacing: Metrics.Space.compact) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                    if index > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(segment)
+                        .font(Typography.sectionHeader)
+                        .foregroundStyle(
+                            index == segments.count - 1 ? .primary : .secondary
+                        )
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// One create button with a menu, instead of two icon buttons. New items land
+    /// beside the active document, or at the workspace root — the Xcode rule.
+    private var createMenu: some View {
+        Menu {
+            Button {
+                appState.requestCreation(kind: .file)
+            } label: {
+                Label("New File", systemImage: "doc.badge.plus")
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
+            Button {
+                appState.requestCreation(kind: .folder)
+            } label: {
+                Label("New Folder", systemImage: "folder.badge.plus")
+            }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .help("New File (⌘N)")
+        .disabled(appState.defaultCreateDirectory == nil)
+    }
+
+    // MARK: - Bindings
 
     private var columnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
@@ -79,147 +194,18 @@ struct MainWindowView: View {
         )
     }
 
+    private var pendingCloseBinding: Binding<Bool> {
+        Binding(
+            get: { appState.pendingClose != nil },
+            set: { if !$0 { appState.pendingClose = nil } }
+        )
+    }
+
     private var errorBinding: Binding<Bool> {
         Binding(
             get: { appState.errorMessage != nil },
             set: { if !$0 { appState.errorMessage = nil } }
         )
-    }
-
-    private var openFile: (URL) -> Void {
-        { url in appState.openFile(url) }
-    }
-}
-
-// MARK: - Tab bar
-
-private struct TabBar: View {
-    let documents: [CodeEditorCore.Document]
-    let appState: AppState
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(documents) { document in
-                        tab(for: document)
-                    }
-                }
-            }
-            .scrollIndicators(.never)
-
-            Button {
-                appState.newFile()
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 10)
-            .help("New File (⌘N)")
-        }
-        .frame(height: 28)
-        .background(appState.theme.chrome.barBackground.color)
-    }
-
-    private func tab(for document: CodeEditorCore.Document) -> some View {
-        let isActive = document === appState.documentManager.activeDocument
-
-        return HStack(spacing: 6) {
-            Button {
-                appState.documentManager.activate(document)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: document.isUntitled ? "doc" : "doc.text")
-                        .font(.system(size: 10))
-                    Text(document.title)
-                        .font(.system(size: 12))
-                        .lineLimit(1)
-                }
-                .foregroundColor(isActive ? appState.theme.text.color : appState.theme.secondaryText.color)
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                appState.close(document)
-            } label: {
-                Image(systemName: document.isModified ? "circle.fill" : "xmark")
-                    .font(.system(size: document.isModified ? 6 : 9))
-                    .foregroundColor(appState.theme.secondaryText.color)
-            }
-            .buttonStyle(.plain)
-            .help(document.isModified ? "Unsaved changes" : "Close")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(isActive ? appState.theme.background.color : .clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(isActive ? appState.theme.chrome.accent.color : .clear)
-                .frame(height: 1)
-        }
-    }
-}
-
-// MARK: - Status bar
-
-private struct StatusBar: View {
-    let appState: AppState
-
-    var body: some View {
-        HStack(spacing: 12) {
-            if let document = appState.documentManager.activeDocument {
-                Text("Ln \(appState.editorState.caretLine + 1), Col \(appState.editorState.caretColumn + 1)")
-                Text("\(document.characterCount) chars")
-                Text("\(document.lineCount) lines")
-                if !appState.editorState.selectedLines.isEmpty {
-                    Text("\(appState.editorState.selectedLines.count) lines selected")
-                }
-
-                Spacer(minLength: 0)
-
-                Text(document.language.displayName)
-
-                if document.lineEnding != .lf {
-                    Text(document.lineEnding == .crlf ? "CRLF" : "CR")
-                }
-            } else {
-                Text("No document open")
-                Spacer(minLength: 0)
-            }
-        }
-        .font(.system(size: 11))
-        .foregroundColor(appState.theme.secondaryText.color)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 3)
-        .frame(height: 20)
-        .background(appState.theme.chrome.barBackground.color)
-    }
-}
-
-// MARK: - Welcome
-
-private struct WelcomeView: View {
-    let appState: AppState
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 40, weight: .light))
-                .foregroundColor(appState.theme.secondaryText.color)
-
-            Text("No Document Open")
-                .font(.title3)
-                .foregroundColor(appState.theme.text.color)
-
-            HStack(spacing: 8) {
-                Button("Open Folder…") { appState.openFolder() }
-                Button("New File") { appState.newFile() }
-            }
-            .controlSize(.large)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(appState.theme.background.color)
     }
 }
 
