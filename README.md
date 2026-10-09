@@ -90,9 +90,14 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full roadmap.
 
 ## Contributing
 
-Branch off `main` as `feature/<short-description>`, keep commits on
-[Conventional Commits](https://www.conventionalcommits.org/) form, and open a PR. CI runs
-`swift build` and `swift test` on every push.
+`main` is the only long-lived branch and must always build green. Branch off it as
+`feature/…`, `fix/…`, `chore/…`, `docs/…` or `test/…`, commit in
+[Conventional Commits](https://www.conventionalcommits.org/) form, and open a PR.
+
+- Branching model and PR flow: [docs/BRANCHING.md](docs/BRANCHING.md)
+- Commit types and scopes: [docs/COMMITTING.md](docs/COMMITTING.md)
+
+CI runs `swift build` and `swift test` on macOS for every push and PR.
 
 ## License
 
