@@ -79,6 +79,28 @@ struct DocumentTests {
         #expect(document.offset(forLine: 9, column: 0) == nil)
     }
 
+    @Test("a collapsed caret selects no lines")
+    func collapsedCaretSelectsNothing() {
+        let document = Document(content: "abc\ndef\nghi")
+
+        // Regression: the status bar reported "1 line selected" for every freshly
+        // opened file, because the caret's line counted as a selection.
+        #expect(document.selectedLines(for: TextSelection(location: 2)) == [])
+        #expect(document.selectedLines(for: TextSelection(location: 0)) == [])
+        #expect(document.selectedLines(for: TextSelection()) == [])
+    }
+
+    @Test("a selection reports every line it covers")
+    func selectionReportsCoveredLines() {
+        let document = Document(content: "abc\ndef\nghi\njkl")
+
+        // From the start of line 0 to the start of line 2 covers lines 0, 1 and 2.
+        #expect(document.selectedLines(for: TextSelection(start: 0, end: 8)) == [0, 1, 2])
+
+        // Within one line is still one selected line.
+        #expect(document.selectedLines(for: TextSelection(start: 4, end: 6)) == [1])
+    }
+
     @Test("clamps selections to the content bounds")
     func selectionClamping() {
         let document = Document(content: "hello")

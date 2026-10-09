@@ -113,11 +113,7 @@ public final class EditorState {
             caretOffset = selection.start
         }
 
-        if let start, let end {
-            selectedLines = Set(start.line...end.line)
-        } else {
-            selectedLines = []
-        }
+        selectedLines = document.selectedLines(for: selection)
     }
 
     public func setCaret(line: Int, column: Int) {

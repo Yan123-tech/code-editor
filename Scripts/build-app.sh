@@ -39,7 +39,7 @@ EXECUTABLE="CodeEditorApp"
 cd "$ROOT"
 
 echo "==> Building $EXECUTABLE ($CONFIGURATION)"
-swift build -c "$CONFIGURATION" --product "$EXECUTABLE" --show-bin-path > /dev/null
+swift build -c "$CONFIGURATION" --product "$EXECUTABLE"
 BIN_PATH="$(swift build -c "$CONFIGURATION" --product "$EXECUTABLE" --show-bin-path)"
 
 echo "==> Laying out $DESTINATION"
