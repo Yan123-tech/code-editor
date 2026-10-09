@@ -1,7 +1,7 @@
-import SwiftUI
+import CodeEditSourceEditor
 import CodeEditorCore
 import CodeEditorThemes
-import CodeEditSourceEditor
+import SwiftUI
 
 /// Editor preferences and transient view state for the active document.
 @MainActor

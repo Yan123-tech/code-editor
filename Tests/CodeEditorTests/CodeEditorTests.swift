@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import CodeEditorCore
 
 // MARK: - LineEnding
@@ -357,7 +358,7 @@ struct FileSystemManagerTests {
             directories: [root.appendingPathComponent("zeta")],
             files: [
                 root.appendingPathComponent("b.txt"): "b",
-                root.appendingPathComponent("a.txt"): "a"
+                root.appendingPathComponent("a.txt"): "a",
             ]
         )
         let manager = FileSystemManager(provider: provider)

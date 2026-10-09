@@ -1,7 +1,7 @@
-import SwiftUI
 import CodeEditorCore
-import CodeEditorThemes
 import CodeEditorTerminal
+import CodeEditorThemes
+import SwiftUI
 
 /// The app's shared state: open folder, documents, theme, editor preferences, terminal.
 @MainActor

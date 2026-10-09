@@ -56,7 +56,8 @@ public final class TextSelectionManager {
     /// The text covered by all selections, in document order.
     public func selectedText(in content: String) -> String {
         let string = content as NSString
-        return selections
+        return
+            selections
             .sorted { $0.start < $1.start }
             .compactMap { selection -> String? in
                 let range = selection.nsRange
@@ -69,7 +70,8 @@ public final class TextSelectionManager {
     /// Line numbers touched by the primary selection, used to highlight the gutter.
     public func selectedLines(in document: Document) -> Set<Int> {
         guard let start = document.lineAndColumn(for: primarySelection.start),
-              let end = document.lineAndColumn(for: primarySelection.end) else { return [] }
+            let end = document.lineAndColumn(for: primarySelection.end)
+        else { return [] }
         return Set(start.line...end.line)
     }
 }

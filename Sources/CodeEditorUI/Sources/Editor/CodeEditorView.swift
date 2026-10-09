@@ -1,9 +1,9 @@
-import SwiftUI
-import CodeEditorCore
-import CodeEditorThemes
 import CodeEditLanguages
 import CodeEditSourceEditor
 import CodeEditTextView
+import CodeEditorCore
+import CodeEditorThemes
+import SwiftUI
 
 /// The editing surface: a tree-sitter highlighted source editor with its own line number
 /// gutter, bracket emphasis and undo stack.

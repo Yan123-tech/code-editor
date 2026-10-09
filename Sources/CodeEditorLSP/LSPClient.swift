@@ -23,7 +23,7 @@ public enum LanguageServerRegistry {
     public static var sourceKitLSPPath: String? {
         let candidates = [
             "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/sourcekit-lsp",
-            "/Library/Developer/CommandLineTools/usr/bin/sourcekit-lsp"
+            "/Library/Developer/CommandLineTools/usr/bin/sourcekit-lsp",
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
@@ -105,7 +105,9 @@ public final class LSPClient {
                 params: InitializeParams(
                     rootURI: rootURL?.absoluteString,
                     capabilities: .default,
-                    workspaceFolders: rootURL.map { [WorkspaceFolder(uri: $0.absoluteString, name: $0.lastPathComponent)] }
+                    workspaceFolders: rootURL.map {
+                        [WorkspaceFolder(uri: $0.absoluteString, name: $0.lastPathComponent)]
+                    }
                 ),
                 as: InitializeResult.self
             )
@@ -229,10 +231,12 @@ public final class LSPClient {
     private func handleNotification(method: String, params: JSONValue) {
         switch method {
         case "textDocument/publishDiagnostics":
-            guard let payload = try? JSONDecoder().decode(
-                PublishDiagnosticsPayload.self,
-                from: JSONEncoder().encode(params)
-            ) else { return }
+            guard
+                let payload = try? JSONDecoder().decode(
+                    PublishDiagnosticsPayload.self,
+                    from: JSONEncoder().encode(params)
+                )
+            else { return }
             diagnosticsByURI[payload.uri] = payload.diagnostics
             onDiagnosticsChanged?(payload.uri, payload.diagnostics)
 

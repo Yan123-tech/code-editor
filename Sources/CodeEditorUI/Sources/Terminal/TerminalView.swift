@@ -1,6 +1,6 @@
-import SwiftUI
-import CodeEditorThemes
 import CodeEditorTerminal
+import CodeEditorThemes
+import SwiftUI
 
 /// Terminal panel: a scrollback of output lines plus a command input.
 public struct TerminalView: View {

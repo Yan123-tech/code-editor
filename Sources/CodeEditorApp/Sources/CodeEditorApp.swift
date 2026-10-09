@@ -1,7 +1,7 @@
-import SwiftUI
 import CodeEditorCore
 import CodeEditorThemes
 import CodeEditorUI
+import SwiftUI
 
 @main
 struct CodeEditorApp: App {
@@ -78,10 +78,12 @@ struct CodeEditorApp: App {
             }
             .keyboardShortcut("b", modifiers: .command)
 
-            Toggle("Status Bar", isOn: Binding(
-                get: { appState.isStatusBarVisible },
-                set: { appState.isStatusBarVisible = $0 }
-            ))
+            Toggle(
+                "Status Bar",
+                isOn: Binding(
+                    get: { appState.isStatusBarVisible },
+                    set: { appState.isStatusBarVisible = $0 }
+                ))
         }
 
         CommandGroup(after: .toolbar) {
@@ -93,10 +95,12 @@ struct CodeEditorApp: App {
 
         // MARK: Format
         CommandGroup(replacing: .textFormatting) {
-            Toggle("Word Wrap", isOn: Binding(
-                get: { appState.editorState.wrapLines },
-                set: { appState.editorState.setWrapLines($0) }
-            ))
+            Toggle(
+                "Word Wrap",
+                isOn: Binding(
+                    get: { appState.editorState.wrapLines },
+                    set: { appState.editorState.setWrapLines($0) }
+                ))
 
             Menu("Tab Width") {
                 ForEach([2, 4, 8], id: \.self) { width in

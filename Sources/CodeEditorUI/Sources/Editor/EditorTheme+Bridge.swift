@@ -1,8 +1,8 @@
-import SwiftUI
-import CodeEditorCore
-import CodeEditorThemes
 import CodeEditLanguages
 import CodeEditSourceEditor
+import CodeEditorCore
+import CodeEditorThemes
+import SwiftUI
 
 extension Language {
     /// The tree-sitter language used for highlighting, resolved from the file extension.
@@ -23,7 +23,7 @@ extension Language {
     /// Every language the editor can describe, ordered for menus.
     static let allLanguages: [Language] = [
         .swift, .javascript, .typescript, .python, .json, .markdown,
-        .html, .css, .shell, .yaml, .toml, .text
+        .html, .css, .shell, .yaml, .toml, .text,
     ]
 }
 

@@ -136,10 +136,12 @@ public actor JSONRPCTransport {
         let headerData = buffer[buffer.startIndex..<headerEnd.lowerBound]
         let header = String(decoding: headerData, as: UTF8.self)
 
-        guard let length = header
-            .split(separator: "\r\n")
-            .first(where: { $0.lowercased().hasPrefix("content-length:") })
-            .flatMap({ Int($0.split(separator: ":", maxSplits: 1)[1].trimmingCharacters(in: .whitespaces)) })
+        guard
+            let length =
+                header
+                .split(separator: "\r\n")
+                .first(where: { $0.lowercased().hasPrefix("content-length:") })
+                .flatMap({ Int($0.split(separator: ":", maxSplits: 1)[1].trimmingCharacters(in: .whitespaces)) })
         else {
             // Malformed header; drop it and resynchronize on the next one.
             buffer.removeSubrange(buffer.startIndex...headerEnd.upperBound)

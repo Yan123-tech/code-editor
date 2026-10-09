@@ -1,6 +1,6 @@
-import SwiftUI
 import CodeEditorCore
 import CodeEditorThemes
+import SwiftUI
 
 /// Recursive file tree for the sidebar.
 public struct FileExplorerView: View {
@@ -185,8 +185,14 @@ public struct FileExplorerView: View {
             }
         }
         .contextMenu {
-            Button("New File Here") { targetFolder = item; sheet = NewItemSheet(kind: .file) }
-            Button("New Folder Here") { targetFolder = item; sheet = NewItemSheet(kind: .folder) }
+            Button("New File Here") {
+                targetFolder = item
+                sheet = NewItemSheet(kind: .file)
+            }
+            Button("New Folder Here") {
+                targetFolder = item
+                sheet = NewItemSheet(kind: .folder)
+            }
             if !item.isDirectory {
                 Divider()
                 Button("Rename…") { renaming = item }
