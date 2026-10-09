@@ -3,250 +3,244 @@ import CodeEditorThemes
 import SwiftUI
 
 /// Recursive file tree for the sidebar.
+///
+/// Clicking a row selects it. Selecting a file opens it in the editor — the Xcode
+/// navigator behaviour — and selecting a folder makes it the target of the toolbar's
+/// create menu. The disclosure triangle (and only the triangle) toggles expansion,
+/// which is what every Mac outline view does; the previous version required a
+/// double-click and used a single click to set an invisible create-target.
+///
+/// The active document is emphasised (bold name, accent icon) and revealed by
+/// expanding its ancestors whenever it changes.
 public struct FileExplorerView: View {
     @Bindable var fileSystemManager: FileSystemManager
     let theme: Theme
+    let activeDocumentURL: URL?
     let onOpenFile: (URL) -> Void
+    let onCreateIn: (URL, NewItemKind) -> Void
 
-    /// Directory that "New File/Folder" targets; defaults to the root.
-    @State private var targetFolder: FileSystemItem?
-    @State private var sheet: NewItemSheet?
+    @State private var selection: FileSystemItem?
     @State private var renaming: FileSystemItem?
+    @State private var deleting: FileSystemItem?
     @State private var errorMessage: String?
 
     public init(
         fileSystemManager: FileSystemManager,
         theme: Theme,
-        onOpenFile: @escaping (URL) -> Void
+        activeDocumentURL: URL?,
+        onOpenFile: @escaping (URL) -> Void,
+        onCreateIn: @escaping (URL, NewItemKind) -> Void
     ) {
         self.fileSystemManager = fileSystemManager
         self.theme = theme
+        self.activeDocumentURL = activeDocumentURL
         self.onOpenFile = onOpenFile
+        self.onCreateIn = onCreateIn
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().overlay(theme.chrome.border.color)
-
-            Group {
-                if let root = fileSystemManager.rootURL {
-                    list(for: root)
-                } else {
-                    emptyState
-                }
+        Group {
+            if let root = fileSystemManager.rootURL {
+                list(for: root)
+            } else {
+                emptyState
             }
         }
-        .frame(minWidth: 180, idealWidth: 240, maxWidth: 420)
-        .background(theme.background.color)
-        .sheet(item: $sheet) { sheet in
-            NewItemSheetView(kind: sheet.kind) { name in
-                create(sheet.kind, named: name)
-            }
+        .onChange(of: selection) { _, newValue in
+            guard let item = newValue, !item.isDirectory else { return }
+            onOpenFile(item.url)
+        }
+        .task(id: activeDocumentURL) {
+            await revealActiveDocument()
         }
         .sheet(item: $renaming) { item in
             RenameSheetView(current: item.name) { newName in
                 Task { await rename(item, to: newName) }
             }
         }
-        .alert("File Explorer", isPresented: errorBinding) {
-            Button("OK", role: .cancel) { errorMessage = nil }
+        .confirmationDialog(
+            "Delete “\(deleting?.name ?? "")”?",
+            isPresented: deletingBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let item = deleting { Task { await delete(item) } }
+            }
         } message: {
-            Text(errorMessage ?? "")
+            Text("The item is deleted immediately. This cannot be undone.")
+        }
+        .alert("File Explorer", isPresented: errorBinding) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+                fileSystemManager.clearError()
+            }
+        } message: {
+            Text(errorMessage ?? fileSystemManager.errorMessage ?? "")
         }
     }
 
     // MARK: - Subviews
 
-    private var header: some View {
-        HStack(spacing: 4) {
-            Text(fileSystemManager.rootName)
-                .font(.caption.weight(.semibold))
-                .foregroundColor(theme.text.color)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Spacer(minLength: 0)
-
-            Button {
-                sheet = NewItemSheet(kind: .file)
-            } label: {
-                Image(systemName: "doc.badge.plus")
-            }
-            .help("New File")
-
-            Button {
-                sheet = NewItemSheet(kind: .folder)
-            } label: {
-                Image(systemName: "folder.badge.plus")
-            }
-            .help("New Folder")
-        }
-        .labelStyle(.iconOnly)
-        .font(.system(size: 12))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-    }
-
+    /// One quiet line when no folder is open. The canvas owns the empty-state
+    /// experience — a second one here competed with it.
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "folder")
-                .font(.title2)
-                .foregroundColor(theme.secondaryText.color)
-            Text("No folder open")
-                .font(.caption)
-                .foregroundColor(theme.secondaryText.color)
-            Button("Open Folder…") {
-                NotificationCenter.default.post(name: .codeEditorOpenFolder, object: nil)
-            }
-            .controlSize(.small)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Text("No folder open")
+            .font(Typography.emptyBody)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func list(for root: URL) -> some View {
-        List(selection: selectionBinding) {
-            ForEach(rows(from: root)) { row in
+        List(selection: $selection) {
+            ForEach(flattenedRows(from: root)) { row in
                 rowView(row.item)
                     .tag(row.item)
-                    .padding(.leading, CGFloat(row.depth) * 12)
+                    .padding(.leading, CGFloat(row.depth) * Metrics.treeIndentPerLevel)
             }
         }
         .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .background(theme.background.color)
     }
 
-    /// Flatten the expanded tree into indentable rows.
-    private func rows(from directory: URL, depth: Int = 0) -> [FileRow] {
+    /// Flatten the expanded tree into indentable rows. Only expanded branches are
+    /// enumerated, so a large workspace costs nothing until it is opened.
+    private func flattenedRows(from directory: URL, depth: Int = 0) -> [FileRow] {
         guard depth < 32 else { return [] }
 
         return fileSystemManager.children(of: directory).flatMap { item -> [FileRow] in
             guard item.isDirectory else { return [FileRow(item: item, depth: depth)] }
 
-            var result: [FileRow] = [FileRow(item: item, depth: depth)]
+            var result = [FileRow(item: item, depth: depth)]
             if fileSystemManager.isExpanded(item.url) {
-                result.append(contentsOf: rows(from: item.url, depth: depth + 1))
+                result.append(contentsOf: flattenedRows(from: item.url, depth: depth + 1))
             }
             return result
         }
     }
 
     private func rowView(_ item: FileSystemItem) -> some View {
-        let isTarget = targetFolder?.url == item.url
+        let isActiveDocument = item.url == activeDocumentURL
 
-        return HStack(spacing: 4) {
-            if item.isDirectory {
-                Button {
-                    fileSystemManager.toggleExpansion(of: item)
-                } label: {
-                    Image(systemName: fileSystemManager.isExpanded(item.url) ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(theme.secondaryText.color)
-                }
-                .buttonStyle(.plain)
-                .frame(width: 12)
-            } else {
-                Color.clear.frame(width: 12)
-            }
+        return HStack(spacing: Metrics.Space.compact) {
+            disclosureControl(for: item)
 
             Image(systemName: item.iconName)
-                .font(.system(size: 11))
-                .foregroundColor(item.isDirectory ? theme.chrome.accent.color : theme.secondaryText.color)
-                .frame(width: 14)
+                .font(Typography.sidebarRow)
+                .foregroundStyle(iconColor(for: item, isActiveDocument: isActiveDocument))
+                .frame(width: 16)
 
             Text(item.name)
-                .font(.system(size: 12))
-                .foregroundColor(theme.text.color)
+                .font(Typography.sidebarRow)
+                .fontWeight(isActiveDocument ? .semibold : .regular)
                 .lineLimit(1)
                 .truncationMode(.middle)
-
-            if isTarget {
-                Image(systemName: "target")
-                    .font(.system(size: 9))
-                    .foregroundColor(theme.secondaryText.color)
-                    .help("New items will be created here")
-            }
 
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            if item.isDirectory {
-                fileSystemManager.toggleExpansion(of: item)
-            } else {
-                onOpenFile(item.url)
-            }
-        }
-        .onTapGesture {
-            if item.isDirectory {
-                targetFolder = item
-            }
-        }
         .contextMenu {
-            Button("New File Here") {
-                targetFolder = item
-                sheet = NewItemSheet(kind: .file)
-            }
-            Button("New Folder Here") {
-                targetFolder = item
-                sheet = NewItemSheet(kind: .folder)
-            }
-            if !item.isDirectory {
+            if item.isDirectory {
+                Button {
+                    onCreateIn(item.url, .file)
+                } label: {
+                    Label("New File Here", systemImage: "doc.badge.plus")
+                }
+                Button {
+                    onCreateIn(item.url, .folder)
+                } label: {
+                    Label("New Folder Here", systemImage: "folder.badge.plus")
+                }
                 Divider()
-                Button("Rename…") { renaming = item }
+            }
+            Button {
+                renaming = item
+            } label: {
+                Label("Rename…", systemImage: "pencil")
             }
             Divider()
-            Button("Reveal in Finder") {
+            Button {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            } label: {
+                Label("Reveal in Finder", systemImage: "finder")
             }
-            Button("Copy Path") {
+            Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(item.url.path, forType: .string)
+            } label: {
+                Label("Copy Path", systemImage: "doc.on.doc")
             }
             Divider()
-            Button("Delete", role: .destructive) {
-                Task { await delete(item) }
+            Button(role: .destructive) {
+                deleting = item
+            } label: {
+                Label("Delete…", systemImage: "trash")
             }
         }
     }
 
-    // MARK: - Actions
+    /// The disclosure triangle for folders, a spacer of the same width for files,
+    /// so names align whether or not their parent expands.
+    @ViewBuilder
+    private func disclosureControl(for item: FileSystemItem) -> some View {
+        if item.isDirectory {
+            Button {
+                fileSystemManager.toggleExpansion(of: item)
+            } label: {
+                Image(systemName: fileSystemManager.isExpanded(item.url) ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 12, height: 12)
+            }
+            .buttonStyle(.plain)
+            .help(fileSystemManager.isExpanded(item.url) ? "Collapse" : "Expand")
+        } else {
+            Color.clear.frame(width: 12, height: 12)
+        }
+    }
 
-    private var selectionBinding: Binding<FileSystemItem?> {
+    private func iconColor(for item: FileSystemItem, isActiveDocument: Bool) -> Color {
+        if isActiveDocument {
+            return theme.chrome.accent.color
+        }
+        return item.isDirectory ? theme.chrome.accent.color.opacity(0.7) : .secondary
+    }
+
+    // MARK: - Reveal and selection
+
+    /// Reveal and emphasise the active document whenever it changes, including on
+    /// first appearance.
+    private func revealActiveDocument() async {
+        guard let url = activeDocumentURL else { return }
+        await fileSystemManager.reveal(url)
+
+        let parent = url.deletingLastPathComponent()
+        selection = fileSystemManager.children(of: parent).first { $0.url == url } ?? selection
+    }
+
+    // MARK: - Bindings
+
+    private var deletingBinding: Binding<Bool> {
         Binding(
-            get: { targetFolder },
-            set: { targetFolder = $0 }
+            get: { deleting != nil },
+            set: { if !$0 { deleting = nil } }
         )
     }
 
+    /// Dismissing the alert must clear both error copies. Clearing only the view's
+    /// own copy left the manager's set, so the alert re-presented immediately.
     private var errorBinding: Binding<Bool> {
         Binding(
             get: { errorMessage != nil || fileSystemManager.errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
+            set: { newValue in
+                if !newValue {
+                    errorMessage = nil
+                    fileSystemManager.clearError()
+                }
+            }
         )
     }
 
-    private func create(_ kind: NewItemKind, named rawName: String) {
-        let name = rawName.trimmingCharacters(in: .whitespaces)
-        let directory = targetFolder?.url ?? fileSystemManager.rootURL
-        guard !name.isEmpty, let directory else { return }
-
-        Task {
-            do {
-                switch kind {
-                case .file:
-                    try await fileSystemManager.createFile(named: name, in: directory)
-                    onOpenFile(directory.appendingPathComponent(name))
-                case .folder:
-                    try await fileSystemManager.createFolder(named: name, in: directory)
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
+    // MARK: - Actions
 
     private func rename(_ item: FileSystemItem, to newName: String) async {
         let name = newName.trimmingCharacters(in: .whitespaces)
@@ -275,106 +269,6 @@ private struct FileRow: Identifiable {
     let depth: Int
 
     var id: URL { item.url }
-}
-
-// MARK: - Sheets
-
-private enum NewItemKind {
-    case file
-    case folder
-
-    var title: String {
-        switch self {
-        case .file: return "New File"
-        case .folder: return "New Folder"
-        }
-    }
-
-    var placeholder: String {
-        switch self {
-        case .file: return "File name"
-        case .folder: return "Folder name"
-        }
-    }
-}
-
-private struct NewItemSheet: Identifiable {
-    let id = UUID()
-    var kind: NewItemKind
-}
-
-private struct NewItemSheetView: View {
-    let kind: NewItemKind
-    let onCreate: (String) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(kind.title).font(.headline)
-
-            TextField(kind.placeholder, text: $name)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(submit)
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Create", action: submit)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(20)
-        .frame(width: 320)
-    }
-
-    private func submit() {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        onCreate(trimmed)
-        dismiss()
-    }
-}
-
-private struct RenameSheetView: View {
-    let current: String
-    let onRename: (String) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String
-
-    init(current: String, onRename: @escaping (String) -> Void) {
-        self.current = current
-        self.onRename = onRename
-        _name = State(initialValue: current)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Rename “\(current)”").font(.headline)
-
-            TextField("New name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(submit)
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Rename", action: submit)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || name == current)
-            }
-        }
-        .padding(20)
-        .frame(width: 320)
-    }
-
-    private func submit() {
-        onRename(name)
-        dismiss()
-    }
 }
 
 // MARK: - Notifications

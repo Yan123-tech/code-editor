@@ -20,6 +20,10 @@ public final class AppState {
 
     public var errorMessage: String?
 
+    /// A creation the user has requested but not yet named. Presented as one sheet
+    /// regardless of whether the toolbar menu or a context menu requested it.
+    public var pendingCreation: PendingCreation?
+
     public init() {
         let fileSystemManager = FileSystemManager()
         let themeManager = ThemeManager()
@@ -162,6 +166,42 @@ public final class AppState {
     }
 
     // MARK: - Commands
+
+    /// Where new items land when no directory is given: beside the active
+    /// document, or at the workspace root. The Xcode rule.
+    public var defaultCreateDirectory: URL? {
+        if let parent = documentManager.activeDocument?.url?.deletingLastPathComponent() {
+            return parent
+        }
+        return fileSystemManager.rootURL
+    }
+
+    /// Queue a creation for naming. `directory` nil means `defaultCreateDirectory`.
+    public func requestCreation(kind: NewItemKind, in directory: URL? = nil) {
+        guard let directory = directory ?? defaultCreateDirectory else { return }
+        pendingCreation = PendingCreation(kind: kind, directory: directory)
+    }
+
+    /// Create the pending item and open it if it is a file.
+    public func performCreation(named name: String) {
+        guard let pending = pendingCreation else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        Task {
+            do {
+                switch pending.kind {
+                case .file:
+                    try await fileSystemManager.createFile(named: trimmed, in: pending.directory)
+                    openFile(pending.directory.appendingPathComponent(trimmed))
+                case .folder:
+                    try await fileSystemManager.createFolder(named: trimmed, in: pending.directory)
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
 
     public func toggleSidebar() {
         isSidebarVisible.toggle()

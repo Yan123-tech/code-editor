@@ -15,7 +15,11 @@ struct MainWindowView: View {
             FileExplorerView(
                 fileSystemManager: appState.fileSystemManager,
                 theme: appState.theme,
-                onOpenFile: openFile
+                activeDocumentURL: appState.documentManager.activeDocument?.url,
+                onOpenFile: openFile,
+                onCreateIn: { directory, kind in
+                    appState.requestCreation(kind: kind, in: directory)
+                }
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 420)
         } detail: {
@@ -38,7 +42,12 @@ struct MainWindowView: View {
         }
         .background(appState.theme.background.color)
         .tint(appState.theme.chrome.accent.color)
-        .preferredColorScheme(appState.themeManager.isDark ? .dark : .light)
+        .preferredColorScheme(appState.theme.colorScheme)
+        .sheet(item: $appState.pendingCreation) { pending in
+            NewItemSheetView(pending: pending) { name in
+                appState.performCreation(named: name)
+            }
+        }
         .alert("Code Editor", isPresented: errorBinding) {
             Button("OK", role: .cancel) { appState.errorMessage = nil }
         } message: {
@@ -77,8 +86,8 @@ struct MainWindowView: View {
         )
     }
 
-    private func openFile(_ url: URL) {
-        appState.openFile(url)
+    private var openFile: (URL) -> Void {
+        { url in appState.openFile(url) }
     }
 }
 
