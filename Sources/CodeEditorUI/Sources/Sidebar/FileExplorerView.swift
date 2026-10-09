@@ -46,10 +46,6 @@ public struct FileExplorerView: View {
                 emptyState
             }
         }
-        .onChange(of: selection) { _, newValue in
-            guard let item = newValue, !item.isDirectory else { return }
-            onOpenFile(item.url)
-        }
         .task(id: activeDocumentURL) {
             await revealActiveDocument()
         }
@@ -105,6 +101,48 @@ public struct FileExplorerView: View {
             }
         }
         .listStyle(.sidebar)
+        .onKeyPress(.return) {
+            activateSelection()
+            return .handled
+        }
+        .onKeyPress(.leftArrow) {
+            collapseSelection()
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            expandSelection()
+            return .handled
+        }
+    }
+
+    /// What a click, Return or Enter does: files open, folders toggle. Kept out of
+    /// the selection `onChange` so that arrowing through the tree does not toggle
+    /// every folder on the way past.
+    private func activate(_ item: FileSystemItem) {
+        if item.isDirectory {
+            fileSystemManager.toggleExpansion(of: item)
+        } else {
+            onOpenFile(item.url)
+        }
+    }
+
+    private func activateSelection() {
+        guard let item = selection else { return }
+        activate(item)
+    }
+
+    private func collapseSelection() {
+        guard let item = selection, item.isDirectory, fileSystemManager.isExpanded(item.url) else {
+            return
+        }
+        fileSystemManager.toggleExpansion(of: item)
+    }
+
+    private func expandSelection() {
+        guard let item = selection, item.isDirectory, !fileSystemManager.isExpanded(item.url) else {
+            return
+        }
+        fileSystemManager.toggleExpansion(of: item)
     }
 
     private func rowView(_ item: FileSystemItem) -> some View {
@@ -128,6 +166,7 @@ public struct FileExplorerView: View {
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
+        .onTapGesture { activate(item) }
         .contextMenu {
             if item.isDirectory {
                 Button {
