@@ -99,10 +99,14 @@ public struct CodeEditorView: View {
         )
     }
 
-    /// Characters that look like what the user meant to type but are not: curly
-    /// quotes and the invisible spaces. Drawn as warnings by the editor.
+    /// Characters that look like what the user meant to type but are not: smart
+    /// quotes pasted into source, and the invisible spaces. Drawn as warnings.
+    ///
+    /// Straight quotes are deliberately **not** here. They are the correct character
+    /// in code, and flagging them paints every string literal in every language with
+    /// a warning background.
     private static let warningCharacters: Set<UInt16> = [
-        "\"", "'", "“", "”", "‘", "’", "\u{00A0}", "\u{200B}",
+        "“", "”", "‘", "’", "\u{00A0}", "\u{200B}",
     ].reduce(into: Set<UInt16>()) { set, character in
         for unit in character.utf16 {
             set.insert(unit)

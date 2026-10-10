@@ -24,7 +24,7 @@ struct LanguageTests {
     @Test("resolves languages from file extensions")
     func fromExtension() {
         #expect(Document.language(for: URL(fileURLWithPath: "/tmp/Main.swift")) == .swift)
-        #expect(Document.language(for: URL(fileURLWithPath: "/tmp/app.tsx")) == .typescript)
+        #expect(Document.language(for: URL(fileURLWithPath: "/tmp/app.tsx")) == .tsx)
         #expect(Document.language(for: URL(fileURLWithPath: "/tmp/README.md")) == .markdown)
         #expect(Document.language(for: URL(fileURLWithPath: "/tmp/unknown.zzz")) == .unknown)
     }
