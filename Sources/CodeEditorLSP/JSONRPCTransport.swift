@@ -33,10 +33,15 @@ public actor JSONRPCTransport {
     private var process: Process?
     private var writeHandle: FileHandle?
     private var readHandle: FileHandle?
+    /// Held open by `startForTesting` so writes to the test pipe don't trip SIGPIPE.
+    private var testPipe: Pipe?
 
     private var buffer = Data()
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var notificationHandlers: [@Sendable (String, JSONValue) -> Void] = []
+    /// Called when the server process disappears (crash/exit). Lets the LSP client react — e.g.
+    /// mark itself not-ready and clear the `lastError` so the editor can stop waiting on it.
+    private var onDisconnection: (@Sendable () -> Void)?
     private var nextId = 1
     private var isRunning = false
 
@@ -89,6 +94,7 @@ public actor JSONRPCTransport {
         readHandle = nil
         try? writeHandle?.close()
         writeHandle = nil
+        testPipe = nil
 
         if let process, process.isRunning {
             process.terminate()
@@ -103,6 +109,26 @@ public actor JSONRPCTransport {
         }
         pending.removeAll()
     }
+
+    // MARK: - Testing seam
+
+    /// Drives a request/response cycle in tests without launching a real server.
+    /// Sets the running flag and attaches a discarding write pipe so `request(...)` can
+    /// park a continuation; tests then feed responses via `ingest` or simulate a crash
+    /// via `handleServerClosed`.
+    internal func startForTesting() {
+        self.isRunning = true
+        self.nextId = 1
+        self.process = nil
+        let pipe = Pipe()
+        self.testPipe = pipe
+        self.writeHandle = pipe.fileHandleForWriting
+        self.readHandle = nil
+    }
+
+    /// The ids of requests currently waiting on a response. Used to wait for a parked
+    /// request before feeding it a response in tests.
+    internal var testPendingIds: [Int] { pending.keys.sorted() }
 
     // MARK: - Reading
 
@@ -120,16 +146,19 @@ public actor JSONRPCTransport {
     private static let queueKey = DispatchSpecificKey<Void>()
 
     /// Append bytes and dispatch every complete framed message.
-    private func ingest(_ data: Data) {
+    internal func ingest(_ data: Data) {
         buffer.append(data)
 
-        while let message = nextMessage() {
+        while let message = Self.parseNextMessage(from: &buffer) {
             handle(message)
         }
     }
 
     /// Extract the next `Content-Length`-framed message, or nil if more bytes are needed.
-    private func nextMessage() -> Data? {
+    ///
+    /// Pure with respect to the actor: it only touches the supplied buffer, so it is
+    /// unit-tested directly (including messages split across reads and malformed headers).
+    internal static func parseNextMessage(from buffer: inout Data) -> Data? {
         let headerEnd = buffer.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A]))
         guard let headerEnd else { return nil }
 
@@ -145,7 +174,7 @@ public actor JSONRPCTransport {
         else {
             // Malformed header; drop it and resynchronize on the next one.
             buffer.removeSubrange(buffer.startIndex...headerEnd.upperBound)
-            return nextMessage()
+            return parseNextMessage(from: &buffer)
         }
 
         let bodyStart = headerEnd.upperBound
@@ -164,9 +193,15 @@ public actor JSONRPCTransport {
 
         if let id = message.id {
             // A response to a request we sent.
-            let result = message.result.map { try? encoder.encode($0) } ?? nil
-            let value = result ?? Data("null".utf8)
-            pending.removeValue(forKey: id)?.resume(returning: value)
+            switch Self.routeResponse(message) {
+            case .failure(let error):
+                pending.removeValue(forKey: id)?.resume(throwing: error)
+            case .resume(let value):
+                pending.removeValue(forKey: id)?.resume(returning: value)
+            case .none:
+                // No response id to match against — should not happen here.
+                break
+            }
             return
         }
 
@@ -178,19 +213,59 @@ public actor JSONRPCTransport {
         }
     }
 
-    private func handleServerClosed() {
+    /// Decide what a parked request continuation resumes with for one decoded message.
+    ///
+    /// - A `result` resumes the caller with that value (JSON-encoded).
+    /// - An `error` envelope resumes the caller **throwing** the server's `ResponseError`,
+    ///   so the error message is surfaced instead of being silently turned into `null` and
+    ///   later failing as an opaque decode error.
+    ///
+    /// Pure with respect to actor state: it does not read or write `pending`, so it is
+    /// unit-tested directly.
+    internal static func routeResponse(_ message: RawMessage) -> ResponseAction {
+        guard message.id != nil else { return .none }
+        if let error = message.error {
+            return .failure(error)
+        }
+        let result = message.result.flatMap { try? responseEncoder.encode($0) }
+        return .resume(result ?? Data("null".utf8))
+    }
+
+    internal enum ResponseAction {
+        /// Resume the parked request with this data.
+        case resume(Data)
+        /// Resume the parked request throwing this error.
+        case failure(Error)
+        /// Not a response (e.g. a notification with no id).
+        case none
+    }
+
+    private static let responseEncoder = JSONEncoder()
+
+    /// Called when the server's read pipe reports EOF — i.e. the process exited, most
+    /// likely a crash. Any in-flight request is failed with `notConnected` so callers do
+    /// not hang, and `onDisconnection` lets the LSP client flip to not-ready.
+    internal func handleServerClosed() {
         guard isRunning else { return }
         isRunning = false
         for (_, continuation) in pending {
             continuation.resume(throwing: TransportError.notConnected)
         }
         pending.removeAll()
+        onDisconnection?()
     }
 
     // MARK: - Writing
 
     public func onNotification(_ handler: @escaping @Sendable (String, JSONValue) -> Void) {
         notificationHandlers.append(handler)
+    }
+
+    /// Register a callback fired when the server process exits unexpectedly (crash or clean
+    /// exit detected via a closed read pipe). The LSP client uses this to flip to a
+    /// not-ready state so callers fail fast instead of hanging.
+    public func setDisconnectionHandler(_ handler: @escaping @Sendable () -> Void) {
+        onDisconnection = handler
     }
 
     public func notify(method: String, params: (any Encodable)?) async throws {
