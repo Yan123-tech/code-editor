@@ -4,7 +4,7 @@ Last verified against `feature/ui-redesign` on 2026-10-09, Swift 6.4, macOS 27.0
 
 ```
 swift build    → Build complete
-swift test     → 68 tests in 16 suites passed
+swift test     → 73 tests in 17 suites passed
 swift-format lint --strict → 0 warnings
 ```
 
@@ -64,9 +64,13 @@ lines, command history on ↑/↓, stdout and stderr colored separately.
 **Themes.** Dark, Light, High Contrast. Selection persists to `UserDefaults`, along with
 font size, tab width, word wrap, minimap, folding ribbon and invisibles.
 
+**Quit guard.** Quitting with modified documents prompts first. Save saves everything and
+abandons the quit if any save did not take — a cancelled panel keeps the work; Don't Save
+discards; Cancel stays.
+
 **Commands.** ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L. All wired; none are empty closures.
 
-**Tests.** 68 swift-testing cases. `FileSystemManager` and `QuickOpenIndex` are tested
+**Tests.** 73 swift-testing cases. `FileSystemManager` and `QuickOpenIndex` are tested
 against in-memory providers, so no test touches the real disk.
 
 ## Not working
@@ -93,16 +97,15 @@ security-scoped bookmarks. See [MEMORY.md](MEMORY.md).
 
 **Untitled documents are not restored.** They have no stable identity across launches.
 
-**Session restore reopens paths, not edits, and nothing guards unsaved work on quit.** The
-snapshot stores the workspace root, tab paths and active path — never buffer content. Quit
-with unsaved changes and the tab comes back showing what is on disk, with the edits gone and
-no prompt on the way out. There is no `applicationShouldTerminate` handler, so the app does
-not even ask. Restoring buffers would mean writing them somewhere, and there is no
-untitled-document story yet either. The honest version of this feature is "reopens what you
-had open", not "resumes your session".
+**Session restore reopens paths, not edits.** The snapshot stores the workspace root, tab
+paths and active path — never buffer content. Quit with unsaved changes and the tab comes
+back showing what is on disk. Restoring buffers would mean writing them somewhere, and there
+is no untitled-document story yet either. The honest version of this feature is "reopens what
+you had open", not "resumes your session".
 
-This is the only remaining path to data loss in the app, which is why it tops
-[Next](#next).
+Quitting itself is guarded: a modified document prompts first
+([#18](https://github.com/Yan123-tech/code-editor/issues/18)). Losing the buffer to a
+force-quit or a crash is still possible — nothing persists unsaved content anywhere.
 
 **No multi-cursor.** `TextSelectionManager` models multiple selections and `Document` stores
 them, but the text view drives a single caret.
@@ -132,6 +135,7 @@ one `AppState`, one document set and one sidebar. Multi-window needs per-window 
 | QuickOpenMatcher | 7 | subsequence, ranking, highlight ranges, folding |
 | QuickOpenIndex | 4 | relative paths, skipped directories, ranking, empty query |
 | TerminalSession | 4 | history, failed connect, clear |
+| saveAllModified | 5 | nothing to do, saved, abandoned, mixed outcomes, only-modified visited |
 
 Untested: the view layer in `CodeEditorUI` and `CodeEditorApp` beyond the pure logic
 extracted into `CodeEditorCore`, and the LSP transport.
@@ -141,43 +145,35 @@ extracted into `CodeEditorCore`, and the LSP transport.
 The redesign ([#14](https://github.com/Yan123-tech/code-editor/issues/14),
 [PR #13](https://github.com/Yan123-tech/code-editor/pull/13)) changed what is cheap and what
 is not, so the old ordering no longer holds. Below is what I would pick next and why —
-this is a recommendation, not a commitment. The issues are unchanged.
+this is a recommendation, not a commitment.
 
-### 1. Guard unsaved work before anything else
+The data-loss guard recommended here is done — [#18](https://github.com/Yan123-tech/code-editor/issues#18).
 
-**No issue yet — worth opening.** Session restore persists paths, never buffer content, and
-there is no prompt when the app terminates. Quit with unsaved edits and the tab reopens
-showing what is on disk, with the work gone and nothing said. This is the only gap that can
-lose data, and the redesign made it more visible by making restore feel like it resumes.
-
-Small: a termination handler that asks when modified documents are open, plus a decision
-about whether to persist buffers or not. Data loss outranks features.
-
-### 2. #1 — LSP completion
+### 1. #1 — LSP completion
 
 The client already works; nothing calls it. `SourceEditor` takes a `completionDelegate`, so
 this is wiring rather than design — the least code for the most visible gain, and the
 project's stated purpose ([IDEA.md](IDEA.md)). The suggestion UI already exists upstream too;
 the same way ⌘F did not need building.
 
-### 3. #6 — external change detection
+### 2. #6 — external change detection
 
 A file changed on disk while open is silently overwritten. Also data loss, but narrower: it
 needs someone else editing the same file. A prompt on save when the modification date moved
 is enough to start; FSEvents is not required for correctness here.
 
-### 4. #2 then #3 — diagnostics, hover, go-to-definition
+### 3. #2 then #3 — diagnostics, hover, go-to-definition
 
 Follow #1 naturally: they share the transport and lifecycle that #1 proves. Doing them
 together means the `TextViewCoordinator` wiring is designed once.
 
-### 5. #4 — settings panel
+### 4. #4 — settings panel
 
 Smallest of the six. Minimap, folding ribbon, invisibles, wrap, tab width and font size are
 already toggles in the Format menu and already persisted; the panel is moving existing
 state into a discoverable surface, not new behaviour.
 
-### 6. #5 — PTY terminal
+### 5. #5 — PTY terminal
 
 Largest and least user-visible until done. `vim` and `top` are broken today, which makes it
 feel urgent, but it is C interop behind a protocol and nothing else depends on it.
@@ -205,13 +201,13 @@ as a placeholder branch — plan only, no code.
 
 | Module | Lines | Files |
 |---|---|---|
-| CodeEditorCore | 1451 | 8 |
+| CodeEditorCore | 1478 | 8 |
 | CodeEditorLSP | 1143 | 3 |
-| CodeEditorUI | 1839 | 11 |
-| CodeEditorApp | 484 | 2 |
+| CodeEditorUI | 1904 | 11 |
+| CodeEditorApp | 559 | 2 |
 | CodeEditorThemes | 437 | 5 |
 | CodeEditorTerminal | 245 | 1 |
-| Tests | 969 | 6 |
+| Tests | 1074 | 6 |
 
 LSP is the largest module after `CodeEditorUI` and the least used. That is deliberate for
 now — it is the interesting part — but if the next three issues do not land, it becomes

@@ -32,6 +32,8 @@ an embedded shell in the same window.
 - **Session restore** — reopens your workspace and tabs on launch. It restores *what you
   had open*, not your edits: unsaved buffers are not persisted, and untitled documents
   have no path to replay.
+- **Quit guard** — quitting with unsaved changes asks first. Choosing Save abandons the
+  quit if anything failed to save, so a cancelled dialog never costs you the work.
 - **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L for theme.
 
 ### Interface notes

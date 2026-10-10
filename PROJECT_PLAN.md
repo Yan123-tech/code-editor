@@ -37,7 +37,7 @@ tracked in GitHub, ordered in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 - [ ] Completion works for Swift
 - [ ] Diagnostics render
 - [ ] No leaks in a 30-minute session
-- [ ] Unsaved work is guarded on quit — **the one remaining path to data loss**, and it is not an issue yet
+- [x] Unsaved work is guarded on quit — [#18](https://github.com/Yan123-tech/code-editor/issues/18). Force-quit and crashes still lose buffers
 - [x] The redesign has been reviewed by someone who can see it — it found #15–#17, all since fixed
 
 ## Risks

@@ -16,10 +16,10 @@ them. `App` is the only target that owns a window.
 
 | Module | Lines | Owns |
 |---|---|---|
-| `CodeEditorCore` | 1451 | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `SessionStore`, `Metrics`, `Language`, `LineEnding`, `TextSelection` |
+| `CodeEditorCore` | 1478 | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `SessionStore`, `Metrics`, `Language`, `LineEnding`, `TextSelection` |
 | `CodeEditorLSP` | 1143 | `JSONRPCTransport`, `LSPClient`, wire types |
-| `CodeEditorUI` | 1839 | `CodeEditorView`, `FileExplorerView`, `TabBarView`, `StatusBarView`, `EmptyStateView`, `QuickOpenView`, `TerminalView`, `EditorState`, `AppState`, `Theme.editorTheme` |
-| `CodeEditorApp` | 484 | `MainWindowView`, `CodeEditorApp`, menu commands |
+| `CodeEditorUI` | 1904 | `CodeEditorView`, `FileExplorerView`, `TabBarView`, `StatusBarView`, `EmptyStateView`, `QuickOpenView`, `TerminalView`, `EditorState`, `AppState`, `Theme.editorTheme` |
+| `CodeEditorApp` | 559 | `MainWindowView`, `CodeEditorApp`, `AppDelegate` (quit guard), menu commands |
 | `CodeEditorTerminal` | 245 | `TerminalSession` |
 | `CodeEditorThemes` | 437 | `Theme`, `Chrome`, `Semantic`, `Typography`, `EditorColor`, `ThemeManager` |
 

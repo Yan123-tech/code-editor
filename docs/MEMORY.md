@@ -374,4 +374,5 @@ that stopped working, and a gutter bleeding through the tab strip — after 68 p
 | Does `Scripts/build-app.sh` build? | Only since the fix in #16. Run it from clean to check. |
 | Why do all my tabs show the same file? | #18. `SourceEditor` does not diff text on update. |
 | What is not covered by `swift test`? | The editor binding. Open two files and switch. See #18. |
+| Does quitting warn me? | Yes, since #18's fix. Force-quit does not, and nothing persists buffers. |
 | Where do I write "this does not work"? | Here, and [CURRENT_STATE.md](CURRENT_STATE.md). |
