@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Transport errors
-
 public enum TransportError: Error, LocalizedError {
     case notConnected
     case processLaunchFailed(String)
@@ -47,6 +45,11 @@ public actor JSONRPCTransport {
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+
+    /// Bound a single request so a slow or wedged server can never park the editor
+    /// indefinitely. sourcekit-lsp answers `initialize`/`completion` in well under a
+    /// second in practice; 10s is generous headroom.
+    private static let requestTimeoutNanoseconds: UInt64 = 10 * 1_000_000_000
 
     public init() {}
 
@@ -188,8 +191,42 @@ public actor JSONRPCTransport {
         return body
     }
 
+    /// Attempt to recover from a structurally-invalid sourcekit-lsp JSON message.
+    ///
+    /// sourcekit-lsp occasionally emits a `textEdit` (and, rarely, other) value as an
+    /// object wrapping a bare docstring, e.g. `"textEdit":{"ran at the \`start\`…"}`.
+    /// That is invalid JSON — an object key with no `:`/value — and makes `JSONDecoder`
+    /// reject the *entire* message, silently dropping the completion response. We rewrite
+    /// any `:{"<string>"}` value (with no key/value pair inside) to `:null`, which only
+    /// ever matches structurally-invalid JSON, so well-formed messages are untouched.
+    internal static func repairMalformedJSON(_ body: Data) -> Data? {
+        guard let json = String(data: body, encoding: .utf8) else { return nil }
+        let pattern = #":\{\s*"[^"\\]*(?:\\.[^"\\]*)*"\s*\}"#
+        let repaired = json.replacingOccurrences(
+            of: pattern, with: ":null", options: .regularExpression
+        )
+        guard repaired != json else { return nil }
+        return repaired.data(using: .utf8)
+    }
+
+    /// Decode an inbound message, repairing structurally-invalid JSON that
+    /// sourcekit-lsp occasionally emits (see `repairMalformedJSON`).
+    private func decodeMessage(_ body: Data) -> RawMessage? {
+        if let message = try? decoder.decode(RawMessage.self, from: body) {
+            return message
+        }
+        if let repaired = Self.repairMalformedJSON(body),
+            let message = try? decoder.decode(RawMessage.self, from: repaired)
+        {
+            return message
+        }
+        return nil
+    }
+
     private func handle(_ body: Data) {
-        guard let message = try? decoder.decode(RawMessage.self, from: body) else { return }
+        guard let message = decodeMessage(body) else {
+            return
+        }
 
         if let id = message.id {
             // A response to a request we sent.
@@ -205,12 +242,37 @@ public actor JSONRPCTransport {
             return
         }
 
+        // Server -> client: either a request (string id + method) or a notification (method only).
         if let method = message.method {
-            let params = message.result ?? .null
+            if let stringID = message.stringID {
+                // Acknowledge inbound requests we don't implement (e.g.
+                // `client/registerCapability`). Echoing `null` tells the server "handled";
+                // it then relies on its statically-declared capabilities instead of blocking
+                // the session waiting for a reply we'd otherwise never send.
+                sendResponse(requestID: stringID, result: JSONValue.null)
+            }
+            let params = message.params ?? .null
             for handler in notificationHandlers {
                 handler(method, params)
             }
         }
+    }
+
+    /// Reply to a server-initiated request we don't implement, so the server doesn't block
+    /// waiting for a response. `requestID` is echoed verbatim from the inbound request
+    /// (sourcekit-lsp uses string ids like `"sk-0"`), and `result` is normally `.null`,
+    /// meaning "handled / no result".
+    private struct ClientResponse: Encodable {
+        let jsonrpc = "2.0"
+        let id: String
+        let result: JSONValue
+    }
+
+    private func sendResponse(requestID: String, result: JSONValue) {
+        guard let payload = try? encoder.encode(ClientResponse(id: requestID, result: result)) else {
+            return
+        }
+        write(payload)
     }
 
     /// Decide what a parked request continuation resumes with for one decoded message.
@@ -283,8 +345,24 @@ public actor JSONRPCTransport {
 
         return try await withCheckedThrowingContinuation { continuation in
             pending[id] = continuation
-            Task { await self.write(payload) }
+            write(payload)
+            // Fail the request if the server never answers, so a wedged process can't
+            // park the caller forever. If a response arrives first, `handle` has already
+            // removed the entry and this becomes a no-op.
+            Task {
+                try? await Task.sleep(nanoseconds: Self.requestTimeoutNanoseconds)
+                await self.failRequest(id: id)
+            }
         }
+    }
+
+    /// Resume and remove a request that exceeded the deadline. Actor-isolated so the
+    /// `pending` access can't race with `handle`/`stop`. `async` so a caller on a detached
+    /// `Task` can `await` the actor hop without tripping a "no async operations" warning.
+    private func failRequest(id: Int) async {
+        guard let continuation = pending[id] else { return }
+        pending.removeValue(forKey: id)
+        continuation.resume(throwing: TransportError.requestFailed("language server did not respond in time"))
     }
 
     /// Send a request and decode the `result` field.

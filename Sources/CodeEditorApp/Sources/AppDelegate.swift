@@ -45,11 +45,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A cancelled panel on an untitled document means the work is still there.
             // Abandoning the quit is the only way not to throw it away.
             if await appState?.saveAllModified() == true {
+                appState?.disconnectLanguageServers()
                 sender.terminate(nil)
             } else {
                 isResolvingTermination = false
             }
         case .discard:
+            appState?.disconnectLanguageServers()
             sender.terminate(nil)
         case .cancel:
             isResolvingTermination = false

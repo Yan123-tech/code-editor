@@ -11,14 +11,27 @@ public struct CodeEditorView: View {
     @Bindable var document: CodeEditorCore.Document
     let theme: Theme
     let editorState: EditorState
+    let appState: AppState
 
     @State private var sourceEditorState = SourceEditorState()
     @State private var textCoordinator = DocumentTextCoordinator()
+    @State private var lspCoordinator: LSPTextViewCoordinator
 
-    public init(document: CodeEditorCore.Document, theme: Theme, editorState: EditorState) {
+    public init(
+        document: CodeEditorCore.Document,
+        theme: Theme,
+        editorState: EditorState,
+        appState: AppState
+    ) {
         self.document = document
         self.theme = theme
         self.editorState = editorState
+        self.appState = appState
+        _lspCoordinator = State(
+            initialValue: LSPTextViewCoordinator(
+                document: document, theme: theme, appState: appState
+            )
+        )
     }
 
     public var body: some View {
@@ -28,7 +41,8 @@ public struct CodeEditorView: View {
             configuration: configuration,
             state: $sourceEditorState,
             undoManager: undoManager,
-            coordinators: [textCoordinator]
+            coordinators: [textCoordinator, lspCoordinator],
+            completionDelegate: lspCoordinator
         )
         .background(theme.background.color)
         .onChange(of: sourceEditorState.cursorPositions) { _, positions in
@@ -39,10 +53,12 @@ public struct CodeEditorView: View {
             // and highlight providers. Without this, switching tabs keeps the previous
             // document on screen.
             textCoordinator.reload(text: document.content)
+            Task { await lspCoordinator.switchTo(document: document) }
             editorState.syncSelection(of: document)
         }
         .task {
             editorState.syncSelection(of: document)
+            await lspCoordinator.switchTo(document: document)
         }
         // The panel reports its own visibility; that is the authoritative signal,
         // so this writes back and the forward sync below becomes a no-op.

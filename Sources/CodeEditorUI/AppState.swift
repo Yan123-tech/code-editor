@@ -1,4 +1,5 @@
 import CodeEditorCore
+import CodeEditorLSP
 import CodeEditorTerminal
 import CodeEditorThemes
 import SwiftUI
@@ -92,6 +93,7 @@ public final class AppState {
 
     public func openFolder(at url: URL) {
         fileSystemManager.setRoot(url)
+        disconnectLanguageServers()
         terminal.disconnect()
         terminal.workingDirectory = url
         terminal.clear()
@@ -358,6 +360,74 @@ public final class AppState {
 
     public func setTheme(named name: String) {
         themeManager.setTheme(named: name)
+    }
+
+    // MARK: - Language servers
+
+    /// One lazily-started server per language identifier for the current workspace.
+    /// Clients are `nil` once a crash has been observed; they are reconnected on the
+    /// next `languageServer(for:)` call, after the backoff cooldown.
+    @ObservationIgnored
+    private var languageServers: [String: LSPClient] = [:]
+
+    /// Last time a server for a language failed to start, for the backoff cooldown.
+    @ObservationIgnored
+    private var serverFailedAt: [String: Date] = [:]
+
+    /// The minimum cool-down between reconnect attempts after a failure, to avoid
+    /// respawning a crashing server on every keystroke.
+    private static let reconnectCooldown: TimeInterval = 5.0
+
+    /// The language server for `languageId`, starting it on first use for the current
+    /// workspace. Reconnects after a crash once the cooldown has elapsed.
+    ///
+    /// Returns `nil` when no server is registered for the language, the workspace has no
+    /// root, the server failed to initialize (its `lastError` is surfaced via
+    /// `errorMessage`), or a recent failure is still inside the cool-down window.
+    public func languageServer(for languageId: String) async -> LSPClient? {
+        if let existing = languageServers[languageId], existing.isReady {
+            return existing
+        }
+
+        // In the cool-down window after a failure, don't respawn.
+        if let last = serverFailedAt[languageId],
+            Date().timeIntervalSince(last) < Self.reconnectCooldown
+        {
+            return nil
+        }
+        serverFailedAt[languageId] = nil
+
+        // Drop a crashed/stale client so we can reconnect.
+        if let existing = languageServers[languageId], !existing.isReady {
+            Task { await existing.disconnect() }
+            languageServers[languageId] = nil
+        }
+
+        guard let descriptor = LanguageServerRegistry.descriptor(for: languageId) else {
+            return nil
+        }
+
+        let client = LSPClient(descriptor: descriptor, rootURL: fileSystemManager.rootURL)
+        await client.connect()
+        if client.isReady {
+            languageServers[languageId] = client
+            errorMessage = nil
+            return client
+        } else {
+            serverFailedAt[languageId] = Date()
+            errorMessage = client.lastError ?? "Could not start \(descriptor.displayName)."
+            return nil
+        }
+    }
+
+    /// Tear down every language server. Call on workspace switch and on quit.
+    public func disconnectLanguageServers() {
+        let clients = Array(languageServers.values)
+        languageServers.removeAll()
+        serverFailedAt.removeAll()
+        for client in clients {
+            Task { await client.disconnect() }
+        }
     }
 }
 
