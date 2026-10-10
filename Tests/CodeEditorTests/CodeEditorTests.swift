@@ -79,6 +79,28 @@ struct DocumentTests {
         #expect(document.offset(forLine: 9, column: 0) == nil)
     }
 
+    @Test("a collapsed caret selects no lines")
+    func collapsedCaretSelectsNothing() {
+        let document = Document(content: "abc\ndef\nghi")
+
+        // Regression: the status bar reported "1 line selected" for every freshly
+        // opened file, because the caret's line counted as a selection.
+        #expect(document.selectedLines(for: TextSelection(location: 2)) == [])
+        #expect(document.selectedLines(for: TextSelection(location: 0)) == [])
+        #expect(document.selectedLines(for: TextSelection()) == [])
+    }
+
+    @Test("a selection reports every line it covers")
+    func selectionReportsCoveredLines() {
+        let document = Document(content: "abc\ndef\nghi\njkl")
+
+        // From the start of line 0 to the start of line 2 covers lines 0, 1 and 2.
+        #expect(document.selectedLines(for: TextSelection(start: 0, end: 8)) == [0, 1, 2])
+
+        // Within one line is still one selected line.
+        #expect(document.selectedLines(for: TextSelection(start: 4, end: 6)) == [1])
+    }
+
     @Test("clamps selections to the content bounds")
     func selectionClamping() {
         let document = Document(content: "hello")
@@ -157,6 +179,111 @@ struct DocumentTests {
         let document = Document(content: "héllo")
         #expect(document.characterCount == "héllo".utf8.count)
         #expect(document.lineCount == 1)
+    }
+}
+
+// MARK: - Save-all-modified
+
+@MainActor
+@Suite("saveAllModified")
+struct SaveAllModifiedTests {
+    /// A document with a real file behind it, so saving is a real save rather than a
+    /// simulation. `setContent` cannot stand in for one — it *sets* `isModified`, which is
+    /// the opposite of what saving does.
+    private func savedDocument(_ content: String) throws -> (Document, URL) {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("codeeditor-saveall-\(UUID().uuidString).swift")
+        try "original".write(to: url, atomically: true, encoding: .utf8)
+
+        // Construct with different content first: setContent guards on equality and
+        // would otherwise no-op, leaving the document clean and the test vacuous.
+        let document = Document(content: "original", language: .swift, url: url)
+        document.setContent(content)
+        return (document, url)
+    }
+
+    @Test("nothing modified means nothing to do and success")
+    func cleanDocumentsSucceed() async {
+        let manager = DocumentManager()
+        manager.open(Document(content: "untouched", language: .swift))
+        var savedAny = false
+
+        let result = await manager.saveAllModified { _ in savedAny = true }
+
+        #expect(result)
+        #expect(!savedAny)
+    }
+
+    @Test("a document that saves reports success")
+    func savesModifiedDocument() async throws {
+        let (document, url) = try savedDocument("edited")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let manager = DocumentManager()
+        manager.open(document)
+
+        let result = await manager.saveAllModified { try? await $0.save() }
+
+        let onDisk = try String(contentsOf: url, encoding: .utf8)
+        #expect(result)
+        #expect(!document.isModified)
+        #expect(onDisk == "edited")
+    }
+
+    @Test("a save that does not take reports failure")
+    func abandonedSaveReportsFailure() async {
+        let manager = DocumentManager()
+        let untitled = Document(content: "original", language: .swift)
+        manager.open(untitled)
+        untitled.setContent("edited")
+
+        // The save action does nothing — this is what a cancelled location panel looks like
+        // from here. The caller is about to discard the buffer, so it must be told.
+        let result = await manager.saveAllModified { _ in }
+
+        #expect(!result)
+        #expect(untitled.isModified)
+    }
+
+    @Test("one abandoned save fails the whole job")
+    func mixedOutcomesReportFailure() async throws {
+        let (saved, savedURL) = try savedDocument("one edited")
+        defer { try? FileManager.default.removeItem(at: savedURL) }
+
+        let abandoned = Document(content: "original", language: .swift)
+        abandoned.setContent("two edited")
+
+        let manager = DocumentManager()
+        manager.open(saved)
+        manager.open(abandoned)
+
+        let result = await manager.saveAllModified { document in
+            // One document saves; the other stands in for a cancelled panel.
+            guard document === saved else { return }
+            try? await document.save()
+        }
+
+        #expect(!result)
+        #expect(!saved.isModified)
+        #expect(abandoned.isModified)
+    }
+
+    @Test("only modified documents are offered")
+    func visitsOnlyModifiedDocuments() async throws {
+        let (dirty, dirtyURL) = try savedDocument("dirty")
+        defer { try? FileManager.default.removeItem(at: dirtyURL) }
+        let clean = Document(content: "clean", language: .swift)
+
+        let manager = DocumentManager()
+        manager.open(clean)
+        manager.open(dirty)
+
+        var visited: [String] = []
+        _ = await manager.saveAllModified { document in
+            visited.append(document.content)
+            try? await document.save()
+        }
+
+        #expect(visited == ["dirty"])
     }
 }
 
@@ -426,6 +553,67 @@ struct FileSystemManagerTests {
         // Same directory, expressed with a trailing slash.
         let withSlash = URL(fileURLWithPath: "/tmp/stub/")
         #expect(manager.children(of: withSlash).map(\.name) == ["a.txt"])
+    }
+
+    @Test("reveal expands every ancestor of a deeply nested file")
+    func revealExpandsAncestors() async {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let sub = root.appendingPathComponent("Sources")
+        let nested = sub.appendingPathComponent("App")
+        let file = nested.appendingPathComponent("Main.swift")
+        let provider = StubProvider(directories: [root, sub, nested], files: [file: "x"])
+        let manager = FileSystemManager(provider: provider)
+
+        manager.setRoot(root)
+        await manager.load(root)
+        #expect(!manager.isExpanded(sub))
+
+        await manager.reveal(file)
+
+        #expect(manager.isExpanded(sub))
+        #expect(manager.isExpanded(nested))
+        // The file's own directory is loaded, the file itself is not a directory to expand.
+        #expect(!manager.children(of: nested).isEmpty)
+    }
+
+    @Test("reveal is a no-op outside the root")
+    func revealOutsideRoot() async {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let provider = StubProvider(directories: [root])
+        let manager = FileSystemManager(provider: provider)
+        manager.setRoot(root)
+        await manager.load(root)
+
+        await manager.reveal(URL(fileURLWithPath: "/elsewhere/thing.swift"))
+        #expect(manager.children(of: root).isEmpty)
+    }
+
+    @Test("reveal does not reload already-expanded ancestors")
+    func revealSkipsExpanded() async throws {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let sub = root.appendingPathComponent("dir")
+        let file = sub.appendingPathComponent("a.txt")
+        let provider = StubProvider(directories: [root, sub], files: [file: "a"])
+        let manager = FileSystemManager(provider: provider)
+        manager.setRoot(root)
+        await manager.load(root)
+
+        manager.toggleExpansion(of: try #require(manager.children(of: root).first))
+        await manager.load(sub)
+        await manager.reveal(file)
+        #expect(manager.isExpanded(sub))
+    }
+
+    @Test("clearError dismisses the error so an alert can close")
+    func clearErrorDismisses() {
+        let root = URL(fileURLWithPath: "/tmp/stub")
+        let provider = StubProvider(files: [root: "x"])
+        let manager = FileSystemManager(provider: provider)
+        manager.setRoot(root)
+        #expect(manager.errorMessage != nil)
+
+        manager.clearError()
+        #expect(manager.errorMessage == nil)
     }
 }
 

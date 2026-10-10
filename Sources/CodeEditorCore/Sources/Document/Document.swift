@@ -302,6 +302,20 @@ public final class Document: Identifiable {
         return NSRange(location: start, length: end - start)
     }
 
+    /// The 0-based lines `selection` covers.
+    ///
+    /// Empty when the selection is a collapsed caret. A caret does sit *on* a line,
+    /// but counting it made the status bar claim "1 line selected" for a document with
+    /// nothing selected — which is every freshly opened file. A caller that wants the
+    /// caret's line uses `lineAndColumn(for:)`.
+    public func selectedLines(for selection: TextSelection) -> Set<Int> {
+        guard !selection.isEmpty else { return [] }
+        guard let start = lineAndColumn(for: selection.start),
+            let end = lineAndColumn(for: selection.end)
+        else { return [] }
+        return Set(start.line...end.line)
+    }
+
     /// The substring covered by the primary selection.
     public var selectedText: String {
         let range = nsRange(from: selection.start, to: selection.end) ?? NSRange(location: 0, length: 0)
@@ -518,6 +532,33 @@ public final class DocumentManager {
         for document in documents where document.isModified {
             try? await document.save()
         }
+    }
+
+    /// Save every modified document through `save`, and report whether the job finished.
+    ///
+    /// Returns false when anything was abandoned — a cancelled location panel, a failed
+    /// write. The test for "did it take" is whether the document is *still modified*
+    /// afterwards, which catches both without the caller having to know why.
+    ///
+    /// The save action is injected because saving properly needs UI: an untitled document
+    /// requires a location panel, which Core may not present. Callers own that, Core owns
+    /// this decision.
+    ///
+    /// The caller is about to discard buffers, so false must mean "keep the work" rather
+    /// than "something went wrong, carry on".
+    @discardableResult
+    public func saveAllModified(save: (Document) async -> Void) async -> Bool {
+        var savedEverything = true
+
+        for document in documents where document.isModified {
+            await save(document)
+            // Still modified means the save did not take.
+            if document.isModified {
+                savedEverything = false
+            }
+        }
+
+        return savedEverything
     }
 
     private func add(_ document: Document) {

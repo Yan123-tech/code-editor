@@ -20,7 +20,7 @@ swift build && swift test
 swift-format lint --recursive --strict --configuration .swift-format Sources Tests
 ```
 
-All three, before every push. 35 tests, about 30 seconds.
+All three, before every push. 68 tests in 16 suites, about 30 seconds.
 
 `swift-format format --in-place --recursive --configuration .swift-format Sources Tests`
 when lint complains about formatting.
@@ -87,8 +87,12 @@ Fill in the template. Reviewer needs: what changed, why, how it was verified.
 - [ ] `swift build` passes
 - [ ] `swift test` passes
 - [ ] `swift-format lint --strict` clean
+- [ ] If the change touches the editor binding, two documents were opened and switched between
+      by hand — see [MEMORY.md #18](MEMORY.md). Nothing tests this path: the defect lives in
+      upstream's view-update logic, so it is only reachable by running the app.
 - [ ] New public APIs have doc comments explaining the contract, not restating the name
 - [ ] Behaviour change has a test; bug fix has a test that fails without the fix
+      — or a written reason there cannot be one, which is a worse excuse than a missing test
 - [ ] Limitations documented in the PR body or [CURRENT_STATE.md](CURRENT_STATE.md)
 
 ## Issues

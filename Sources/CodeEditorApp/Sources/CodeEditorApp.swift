@@ -6,23 +6,19 @@ import SwiftUI
 @main
 struct CodeEditorApp: App {
     @State private var appState = AppState()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("Code Editor", id: "main-window") {
+        // A single window: AppState is shared and per-window state would fight it.
+        // A second window sharing one document set and one sidebar is a bug, not a
+        // feature; multi-window needs per-window state first.
+        Window("Code Editor", id: "main-window") {
             MainWindowView(appState: appState)
                 .frame(minWidth: 720, minHeight: 480)
-                .onReceive(
-                    NotificationCenter.default.publisher(for: .codeEditorOpenFolder)
-                ) { _ in
-                    appState.openFolder()
-                }
-                .onReceive(
-                    NotificationCenter.default.publisher(for: .codeEditorOpenFiles)
-                ) { notification in
-                    guard let urls = notification.object as? [URL] else { return }
-                    for url in urls {
-                        appState.openFile(url)
-                    }
+                .onAppear {
+                    // The delegate exists before any window does, so it has to be handed
+                    // the state once there is one. Nil means "nothing to lose" meanwhile.
+                    appDelegate.appState = appState
                 }
         }
         .defaultSize(width: 1200, height: 800)
@@ -34,7 +30,7 @@ struct CodeEditorApp: App {
         // MARK: File
         CommandGroup(replacing: .newItem) {
             Button("New File") {
-                appState.newFile()
+                appState.requestCreation(kind: .file)
             }
             .keyboardShortcut("n", modifiers: .command)
 
@@ -47,6 +43,22 @@ struct CodeEditorApp: App {
                 presentOpenFilePanel()
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
+        }
+
+        CommandGroup(after: .textEditing) {
+            Button("Find…") {
+                appState.editorState.isFindVisible = true
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .disabled(appState.documentManager.activeDocument == nil)
+        }
+
+        CommandGroup(after: .toolbar) {
+            Button("Quick Open…") {
+                appState.toggleQuickOpen()
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(appState.fileSystemManager.rootURL == nil)
         }
 
         CommandGroup(replacing: .saveItem) {
@@ -102,6 +114,27 @@ struct CodeEditorApp: App {
                     set: { appState.editorState.setWrapLines($0) }
                 ))
 
+            Toggle(
+                "Invisible Characters",
+                isOn: Binding(
+                    get: { appState.editorState.showInvisibles },
+                    set: { appState.editorState.setShowInvisibles($0) }
+                ))
+
+            Toggle(
+                "Minimap",
+                isOn: Binding(
+                    get: { appState.editorState.showMinimap },
+                    set: { appState.editorState.setShowMinimap($0) }
+                ))
+
+            Toggle(
+                "Code Folding Ribbon",
+                isOn: Binding(
+                    get: { appState.editorState.showFoldingRibbon },
+                    set: { appState.editorState.setShowFoldingRibbon($0) }
+                ))
+
             Menu("Tab Width") {
                 ForEach([2, 4, 8], id: \.self) { width in
                     Button("\(width) Spaces") {
@@ -142,9 +175,8 @@ struct CodeEditorApp: App {
         panel.prompt = "Open"
 
         guard panel.runModal() == .OK else { return }
-        NotificationCenter.default.post(
-            name: .codeEditorOpenFiles,
-            object: panel.urls
-        )
+        for url in panel.urls {
+            appState.openFile(url)
+        }
     }
 }

@@ -33,23 +33,28 @@ without an IDE around it.
 ## Shape of the thing
 
 ```
-┌──────────────────────────────────────────────────┐
-│  ⌘ commands · theme · preferences                │
-├────────────┬─────────────────────────────────────┤
-│            │  tabs                               │
-│  explorer  ├─────────────────────────────────────┤
-│  (tree)    │                                     │
-│            │  editor + tree-sitter highlighting  │
-│            │  gutter · bracket emphasis · undo   │
-│            ├─────────────────────────────────────┤
-│            │  status bar: Ln/Col, encoding       │
-├────────────┴─────────────────────────────────────┤
-│  terminal (toggleable)                           │
-└──────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│  ⌃sidebar   breadcrumb          create ⌕ terminal    │
+├────────────┬───────────────────────────────────────┤
+│            │  tabs (active merges into the canvas) │
+│  explorer  ├───────────────────────────────────────┤
+│  (tree)    │                                       │
+│            │  editor + tree-sitter highlighting    │
+│            │  gutter · bracket emphasis · undo     │
+│            ├───────────────────────────────────────┤
+│            │  status bar: Ln/Col · UTF-8 · language│
+├────────────┴───── drag handle ─────────────────────┤
+│  terminal (toggleable, resizable)                  │
+└────────────────────────────────────────────────────┘
 ```
 
 Three panels, one window, no chrome that is not doing work. The sidebar is resizable, the
-terminal hides entirely, and the editor takes whatever is left.
+terminal hides entirely and is drag-resized, and the editor takes whatever is left.
+
+Two invariants hold the interface together. **Chrome never borrows a colour from syntax** —
+window furniture reads `Theme.chrome`, status reads `Theme.semantic`. And **the chrome has
+one type ramp, one spacing grid and one set of heights**, all in code, none of them inline
+literals.
 
 ## Principles
 
@@ -70,7 +75,13 @@ exists because of it.
 ## Where it is going
 
 Near term, connect the LSP client that already works: completion, diagnostics, hover,
-go-to-definition. That is issues [#1](https://github.com/Yan123-tech/code-editor/issues/1)–[#3](https://github.com/Yan123-tech/code-editor/issues/3).
+go-to-definition. That is issues [#1](https://github.com/Yan123-tech/code-editor/issues/1)–[#3](https://github.com/Yan123-tech/code-editor/issues/3). It is cheap because 0.15 already
+ships the UI — completion delegates, a find panel, folding, a minimap. The project's edge
+was never the chrome; it is the layer underneath.
+
+The interface itself was rebuilt in
+[#14](https://github.com/Yan123-tech/code-editor/issues/14), which is what makes the
+remaining work visible rather than buried in a prototype.
 
 Longer term it is unclear whether this grows into a full editor or stays a focused tool. That
 is a decision to make when there is more evidence about what is missing, not now.

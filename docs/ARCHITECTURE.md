@@ -16,12 +16,31 @@ them. `App` is the only target that owns a window.
 
 | Module | Lines | Owns |
 |---|---|---|
-| `CodeEditorCore` | 958 | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `Language`, `LineEnding`, `TextSelection` |
+| `CodeEditorCore` | 1478 | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `SessionStore`, `Metrics`, `Language`, `LineEnding`, `TextSelection` |
 | `CodeEditorLSP` | 1143 | `JSONRPCTransport`, `LSPClient`, wire types |
-| `CodeEditorUI` | 966 | `CodeEditorView`, `FileExplorerView`, `TerminalView`, `EditorState`, `AppState`, `Theme.editorTheme` |
-| `CodeEditorApp` | 370 | `MainWindowView`, `CodeEditorApp`, menu commands |
+| `CodeEditorUI` | 1904 | `CodeEditorView`, `FileExplorerView`, `TabBarView`, `StatusBarView`, `EmptyStateView`, `QuickOpenView`, `TerminalView`, `EditorState`, `AppState`, `Theme.editorTheme` |
+| `CodeEditorApp` | 559 | `MainWindowView`, `CodeEditorApp`, `AppDelegate` (quit guard), menu commands |
 | `CodeEditorTerminal` | 245 | `TerminalSession` |
-| `CodeEditorThemes` | 225 | `Theme`, `EditorColor`, `ThemeManager` |
+| `CodeEditorThemes` | 437 | `Theme`, `Chrome`, `Semantic`, `Typography`, `EditorColor`, `ThemeManager` |
+
+## Where the design system lives
+
+Two modules, split by what they may import:
+
+- **`CodeEditorThemes`** — colours and type. `Theme` holds the canvas and syntax tokens, a
+  `Chrome` group for window furniture, a `Semantic` group for status colours, and the
+  `colorScheme` the window forces. `Typography` maps roles to semantic styles.
+- **`CodeEditorCore`** — `Metrics`, the spacing scale, radii and fixed chrome heights. It is
+  pure layout arithmetic, so it stays in the Foundation-only module and its invariants are
+  testable without a window server.
+
+The rule that matters: **chrome never borrows a syntax token.** The accent used to be
+`Theme.keyword`, which meant the tab underline, folder icons, the terminal prompt and
+terminal errors all changed meaning whenever the syntax palette did.
+
+Views must not introduce a literal font size or a padding off the 4pt grid. `MetricsTests`
+fails if the grid is broken; nothing enforces the font rule automatically, so `.system(size:)`
+outside `CodeEditorThemes` is a review item.
 
 ## The rule that matters
 
@@ -61,6 +80,26 @@ would need a re-entrancy guard against the text view writing while SwiftUI is mi
 
 **Consequence:** `Document` mutations that originate outside the text view (nothing today)
 would fight the binding. If you add one, route it through the view, not around it.
+
+## Three more flows worth knowing
+
+**Find panel.** One flag, two owners. `EditorState.isFindVisible` is ours;
+`SourceEditorState.findPanelVisible` is the editor's. `CodeEditorView` syncs them both ways,
+and the panel is the authority: when the user dismisses the panel, the coordinator writes
+`findPanelVisible = false`, which we mirror back onto `EditorState`. ⌘F only ever sets our
+flag. Nothing in the app draws a find UI.
+
+**Session restore.** `AppState` is the `DocumentManagerDelegate`, so opening and closing a
+document persists a `SessionSnapshot` — workspace root, open tab paths, active path — to
+`UserDefaults` via `SessionStore`. On launch it replays it. Untitled documents are skipped
+because they have no path to replay. A vanished root clears the snapshot rather than leaving
+a window that restores nothing.
+
+**Quick open.** `QuickOpenIndex` walks the workspace off the main actor in batches and
+publishes each batch only if its generation is still current, so a superseded walk is
+dropped rather than interleaved. `QuickOpenMatcher` scores candidates per keystroke against
+what is already indexed; the palette renders and nothing else. It is a snapshot — see
+[CURRENT_STATE.md](CURRENT_STATE.md).
 
 ## Caching and identity
 
@@ -124,8 +163,15 @@ others, and the union adds decoding branches nothing exercises.
 
 ## Tests
 
-`CodeEditorCore` and `CodeEditorTerminal` are tested; `CodeEditorUI` and `CodeEditorApp` are
-not, because they are view code.
+`CodeEditorCore`, `CodeEditorThemes` and `CodeEditorTerminal` are tested; `CodeEditorUI` and
+`CodeEditorApp` are not, because they are view code.
+
+The rule when view code grows real logic: **move the logic to `CodeEditorCore` and test it
+there.** The sidebar's tree flattening became `FileOutline`; quick open became
+`QuickOpenMatcher` plus `QuickOpenIndex`. Neither had to change behaviour to be tested.
+
+`UserDefaults`-backed state takes its domain from the caller rather than reaching for
+`.standard`, which is why `SessionStore` and `ThemeManager` are testable.
 
 The useful pattern is `StubProvider`: an in-memory `FileSystemProvider`, so file-system tests
 assert on URLs and names and never touch the real disk or depend on a fixture directory.
@@ -135,8 +181,21 @@ Anything that grows a filesystem dependency should use it.
 
 - `SourceEditor` and `EditorTheme.Attribute` — contained in `CodeEditorView.swift` and
   `EditorTheme+Bridge.swift`. Both are upstream, both are pre-1.0. See [STACK.md](STACK.md).
-- `Notification.Name.codeEditorOpenFolder` / `codeEditorOpenFiles` — `UI` posts, `App`
-  observes. Replace with a closure when a second consumer appears.
+- `DocumentTextCoordinator` — a `TextViewCoordinator` that captures the live
+  `TextViewController` so `CodeEditorView` can reload its text. Exists because
+  `updateNSViewController` does not diff the text behind the binding. A fourth upstream-type
+  file is expected and accounted for; see [MEMORY.md #18](MEMORY.md).
+- `SourceEditorState.findPanelVisible` — `EditorState.isFindVisible` is our flag,
+  `CodeEditorView` syncs it both ways, and the upstream coordinator opens the panel when
+  state disagrees with it. The panel stays the authority on its own visibility.
+- `TreeSitterClient.Constants.longParse` — a notification name from the upstream module.
+  The editor surfaces it as a parse indicator; nothing else depends on it.
+- `Notification.Name.codeEditorOpenFolder` / `codeEditorOpenFiles` — **removed.** The seam
+  existed because the sidebar used to own an "Open Folder" button and could not call
+  `AppState` directly. It can now: the sidebar takes an `onCreateIn` closure and the canvas
+  empty state takes `onOpenFolder`, and the panel itself lives in `AppState`. Both
+  notifications posted and observed inside `CodeEditorApp`, which is a round trip to
+  nowhere. Call closures.
 - `FileSystemManager.load` returns rows synchronously from a cache while populating it
   asynchronously. The view re-renders as children arrive. Fine for a tree; would need
   thought for a list that must not reflow.

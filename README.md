@@ -21,11 +21,31 @@ an embedded shell in the same window.
 - **Tabs** — open documents, dirty-state dots, close with a save prompt.
 - **Save / Save All**, with a location prompt for untitled documents. Line endings are
   detected on load and preserved on save.
+- **Find and replace** — ⌘F, backed by the source editor's own panel.
+- **Quick open** — ⌘P, fuzzy-matching files across the workspace with the matched
+  characters highlighted.
 - **Embedded terminal** — runs your `$SHELL`, with scrollback capped at 2000 lines,
-  command history on ↑/↓, and separate stdout/stderr coloring.
+  command history on ↑/↓, selectable output, and separate stdout/stderr coloring. Drag
+  the divider above it to resize; the height is remembered.
 - **Themes** — Dark, Light and High Contrast, persisted across launches along with font
-  size, tab width and word wrap.
-- **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L for theme.
+  size, tab width, word wrap, minimap, folding ribbon and invisibles.
+- **Session restore** — reopens your workspace and tabs on launch. It restores *what you
+  had open*, not your edits: unsaved buffers are not persisted, and untitled documents
+  have no path to replay.
+- **Quit guard** — quitting with unsaved changes asks first. Choosing Save abandons the
+  quit if anything failed to save, so a cancelled dialog never costs you the work.
+- **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L for theme.
+
+### Interface notes
+
+The window uses native macOS chrome: a unified toolbar with a breadcrumb, a navigator that
+opens files and expands folders on click or arrow key, a tab strip whose active tab merges
+into the editor, and a single empty state that adapts to whether a workspace is open.
+
+Design tokens are not sprinkled through the views. Colours live in `Theme.chrome` and
+`Theme.semantic` — chrome never borrows a syntax token. Spacing, radii and chrome heights
+live in `Metrics` in `CodeEditorCore`, on a 4pt grid. Chrome type is semantic, so it scales
+with your system text size; the code font stays fixed-size on purpose.
 
 ## Requirements
 
@@ -46,6 +66,30 @@ Run the tests with:
 ```bash
 swift test
 ```
+
+### Build the .app bundle
+
+`swift run` gives you the binary, not an application — no Dock tile, no menu bar, no
+double-clickable file. To get `build/Code Editor.app`, run:
+
+```bash
+Scripts/build-app.sh
+```
+
+The script builds in release, lays out `Contents/{MacOS,Resources}`, copies every SwiftPM
+resource bundle into `Contents/Resources` (CodeEditLanguages grammars and CodeEditSymbols
+assets are resolved through `Bundle.module`, which looks them up under `Bundle.main.resourceURL`),
+renders `AppIcon.icns` from `Scripts/make-icon.swift`, and ad-hoc signs the bundle.
+
+| Flag | Effect |
+|---|---|
+| `--debug` | Build the debug product instead of release |
+| `--install` | Also copy the bundle to `/Applications` |
+| `--open` | Launch it when the build finishes |
+
+Ad-hoc signing is enough locally and for handing the bundle to another Mac. To distribute it
+further, swap the `codesign` identity in the script for a Developer ID and notarize the zipped
+bundle.
 
 Format and lint with `swift-format`, which ships inside the Xcode toolchain:
 
@@ -77,12 +121,12 @@ add a `build` job and drop the caveat.
 
 | Module | Responsibility |
 |---|---|
-| `CodeEditorCore` | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`. No UI. |
-| `CodeEditorThemes` | `Theme`, `EditorColor`, `ThemeManager` with persisted selection. |
+| `CodeEditorCore` | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `SessionStore`, `Metrics`. No UI — Foundation only. |
+| `CodeEditorThemes` | `Theme`, `Chrome`, `Semantic`, `Typography`, `EditorColor`, `ThemeManager` with persisted selection. |
 | `CodeEditorTerminal` | `TerminalSession`: shell subprocess, line-buffered scrollback, history. |
 | `CodeEditorLSP` | `JSONRPCTransport` (Content-Length framing) and `LSPClient`. Not yet wired into the UI. |
-| `CodeEditorUI` | SwiftUI views: editor, sidebar, terminal, plus `AppState`. |
-| `CodeEditorApp` | The `@main` App, menu commands, window layout. |
+| `CodeEditorUI` | SwiftUI views: editor, sidebar, tabs, status bar, empty state, quick open, terminal, plus `AppState`. |
+| `CodeEditorApp` | The `@main` App, menu commands, window layout, toolbar. |
 
 Dependencies flow one way: `Core` ← `UI` ← `App`. `Themes`, `Terminal` and `LSP` are
 leaves that `UI` composes.
@@ -94,6 +138,8 @@ leaves that `UI` composes.
 | `⌘N` | New file |
 | `⌘O` | Open folder |
 | `⇧⌘O` | Open files |
+| `⌘F` | Find |
+| `⌘P` | Quick open |
 | `⌘S` / `⌥⌘S` | Save / Save all |
 | `⌘W` | Close tab |
 | `⌘B` | Toggle sidebar |

@@ -105,7 +105,7 @@ public enum FileSystemError: LocalizedError {
 // MARK: - FileSystemItem
 
 /// A file or directory in the file system.
-public struct FileSystemItem: Identifiable, Equatable, Hashable {
+public struct FileSystemItem: Identifiable, Equatable, Hashable, Sendable {
     public let url: URL
     public let name: String
     public let isDirectory: Bool
@@ -283,6 +283,34 @@ public final class FileSystemManager {
             expandedPaths.insert(key)
             Task { await load(item.url) }
         }
+    }
+
+    /// Expand every directory between the root and `url`, so `url` is visible in
+    /// the tree. A no-op for paths outside the root or for the root itself.
+    ///
+    /// Ancestors already expanded are not re-read. The final segment is not
+    /// expanded — it is the file being revealed.
+    public func reveal(_ url: URL) async {
+        guard let rootURL else { return }
+        let rootKey = Self.pathKey(for: rootURL)
+        let targetKey = Self.pathKey(for: url)
+        guard targetKey.hasPrefix(rootKey + "/") else { return }
+
+        var current = rootKey
+        let segments = targetKey.dropFirst(rootKey.count + 1).split(separator: "/").map(String.init)
+        for segment in segments.dropLast() {
+            current += "/" + segment
+            if expandedPaths.insert(current).inserted {
+                await load(URL(fileURLWithPath: current, isDirectory: true))
+            }
+        }
+    }
+
+    /// Dismiss the current error. The view layer calls this when the user closes
+    /// the error alert; without it the presenting condition stays true and the
+    /// alert re-presents immediately.
+    public func clearError() {
+        errorMessage = nil
     }
 
     // MARK: - Mutations

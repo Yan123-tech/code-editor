@@ -1,3 +1,4 @@
+import CodeEditorCore
 import CodeEditorTerminal
 import CodeEditorThemes
 import SwiftUI
@@ -18,7 +19,6 @@ public struct TerminalView: View {
     public var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(theme.separator.color)
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -28,16 +28,17 @@ public struct TerminalView: View {
                                 .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(color(for: line.type))
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
                                 .id(line.id)
                         }
 
                         inputLine
                             .id(inputAnchor)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, Metrics.Space.regular)
+                    .padding(.vertical, Metrics.Space.compact)
                 }
-                .background(theme.background.color)
+                .background(theme.chrome.panelBackground.color)
                 .onChange(of: terminal.outputLines.count) { _, _ in
                     guard terminal.autoScroll else { return }
                     withAnimation(.linear(duration: 0.05)) {
@@ -46,11 +47,9 @@ public struct TerminalView: View {
                 }
                 .onTapGesture { isInputFocused = true }
             }
-
-            Divider().overlay(theme.separator.color)
         }
-        .frame(minHeight: 120, idealHeight: 200)
-        .background(theme.background.color)
+        .frame(minHeight: 120)
+        .background(theme.chrome.panelBackground.color)
         .focusedSceneValue(\.terminalFocus, isInputFocused)
         .focusedSceneValue(\.terminalInput, Binding(get: { input }, set: { input = $0 }))
         .focusedSceneValue(\.terminalSubmit, submit)
@@ -59,42 +58,85 @@ public struct TerminalView: View {
     // MARK: - Subviews
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Text("Terminal")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(theme.text.color)
-
+        HStack(spacing: Metrics.Space.regular) {
             Circle()
-                .fill(terminal.isConnected ? Color.green : Color.red)
+                .fill(
+                    terminal.isConnected
+                        ? theme.semantic.success.color
+                        : theme.semantic.danger.color
+                )
                 .frame(width: 6, height: 6)
+                .help(terminal.isConnected ? "Connected" : "Disconnected")
+
+            Text("Terminal")
+                .font(Typography.panelHeader)
+                .foregroundStyle(theme.text.color)
 
             if let error = terminal.connectionError {
                 Text(error)
-                    .font(.caption2)
-                    .foregroundColor(theme.comment.color)
+                    .font(Typography.hint)
+                    .foregroundStyle(theme.semantic.warning.color)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
 
             Spacer(minLength: 0)
 
-            Button("Clear") { terminal.clear() }
-                .controlSize(.small)
+            headerButton("Clear", icon: "trash", help: "Clear scrollback") {
+                terminal.clear()
+            }
 
-            Button(terminal.isConnected ? "Restart" : "Connect") {
+            headerButton(
+                terminal.isConnected ? "Restart" : "Connect",
+                icon: "arrow.triangle.2.circlepath",
+                help: terminal.isConnected ? "Restart the shell" : "Start the shell"
+            ) {
                 terminal.disconnect()
                 terminal.connect()
             }
-            .controlSize(.small)
             .disabled(terminal.isConnected)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, Metrics.Space.regular)
+        .frame(height: Metrics.Height.panelHeader)
+        .background(headerBackground)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.chrome.border.color).frame(height: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var headerBackground: some View {
+        if theme.chrome.usesMaterials {
+            Rectangle().fill(.thinMaterial)
+        } else {
+            Rectangle().fill(theme.chrome.barBackground.color)
+        }
+    }
+
+    private func headerButton(
+        _ label: String,
+        icon: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .medium))
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("\(label) — \(help)")
+        .accessibilityLabel(label)
     }
 
     private var inputLine: some View {
         HStack(spacing: 0) {
+            Text(terminal.workingDirectory.map { "\($0.lastPathComponent) " } ?? "")
+                .foregroundStyle(theme.secondaryText.color)
             Text("$ ")
-                .foregroundColor(theme.keyword.color)
+                .foregroundStyle(theme.chrome.accent.color)
             TextField("", text: $input)
                 .textFieldStyle(.plain)
                 .foregroundColor(theme.text.color)
@@ -118,9 +160,9 @@ public struct TerminalView: View {
     private func color(for type: TerminalOutputType) -> Color {
         switch type {
         case .standard: theme.text.color
-        case .errorOutput: theme.keyword.color
-        case .info: theme.comment.color
-        case .input: theme.string.color
+        case .errorOutput: theme.semantic.danger.color
+        case .info: theme.secondaryText.color
+        case .input: theme.chrome.accent.color
         }
     }
 }

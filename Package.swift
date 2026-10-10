@@ -82,7 +82,7 @@ let package = Package(
         // MARK: - Tests
         .testTarget(
             name: "CodeEditorTests",
-            dependencies: ["CodeEditorCore", "CodeEditorTerminal", "CodeEditorLSP"],
+            dependencies: ["CodeEditorCore", "CodeEditorTerminal", "CodeEditorLSP", "CodeEditorThemes"],
             path: "Tests/CodeEditorTests",
             swiftSettings: [.enableUpcomingFeature("ApproachableConcurrency")]
         )
