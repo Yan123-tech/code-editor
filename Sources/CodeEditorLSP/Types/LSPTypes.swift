@@ -95,6 +95,17 @@ public enum CompletionItemKind: Int, Codable, CaseIterable, Sendable {
     case reference = 19
     case folderReference = 20
     case constant = 21
+    /// Fallback for kind values the server emits that aren't enumerated here yet
+    /// (sourcekit-lsp sends values up to ~26 for `struct`/`enumMember`/…). Mapping to
+    /// `.other` keeps decoding from failing so a single unknown item never drops the
+    /// whole completion list. Its icon falls back to the default.
+    case other = 22
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(Int.self)
+        self = Self(rawValue: raw) ?? .other
+    }
 }
 
 public struct MarkupContent: Codable, Equatable, Sendable {
@@ -163,7 +174,10 @@ public struct TextEdit: Codable, Equatable, Sendable {
     }
 }
 
-/// Servers may answer with either a bare array or a `CompletionList`.
+/// Servers may answer with either a bare array of completion items or a
+/// `CompletionList` (`{ isIncomplete, items }`). The object form may omit
+/// `isIncomplete`, and sourcekit-lsp attaches fields we don't model (`deprecated`,
+/// `data`, `insertTextFormat`, …) — those are simply ignored.
 public struct CompletionList: Codable, Sendable {
     public var isIncomplete: Bool
     public var items: [CompletionItem]
@@ -174,11 +188,28 @@ public struct CompletionList: Codable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
-        if let list = try? decoder.singleValueContainer().decode(CompletionList.self) {
-            self = list
+        let container = try decoder.singleValueContainer()
+        // A CompletionList object (`{"isIncomplete":…,"items":[…]}`) decodes first.
+        if let object = try? container.decode(CompletionListObject.self) {
+            self.isIncomplete = object.isIncomplete
+            self.items = object.items
             return
         }
-        self.init(isIncomplete: false, items: try decoder.singleValueContainer().decode([CompletionItem].self))
+        // Otherwise assume a bare `[CompletionItem]` array.
+        self.isIncomplete = false
+        self.items = try container.decode([CompletionItem].self)
+    }
+
+    /// Internal shape for the object form; `isIncomplete` is optional on the wire.
+    private struct CompletionListObject: Decodable {
+        let isIncomplete: Bool
+        let items: [CompletionItem]
+        enum CodingKeys: String, CodingKey { case isIncomplete, items }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            isIncomplete = try c.decodeIfPresent(Bool.self, forKey: .isIncomplete) ?? false
+            items = try c.decode([CompletionItem].self, forKey: .items)
+        }
     }
 }
 
@@ -314,7 +345,14 @@ public struct CompletionOptions: Codable, Sendable {
     }
 }
 
-public struct ServerCapabilities: Codable, Sendable {
+/// Server capabilities, decoded leniently.
+///
+/// The LSP spec lets several providers be either a bare `Bool`/`Int` or a richer options
+/// object (e.g. `textDocumentSync` is `TextDocumentSyncKind | TextDocumentSyncOptions`,
+/// `signatureHelpProvider` is `Bool | SignatureHelpOptions`). Servers — including
+/// sourcekit-lsp — send the object form. Decoding each field with `try?` means a shape we
+/// don't model yet becomes `nil` instead of failing the whole `initialize` handshake.
+public struct ServerCapabilities: Decodable, Sendable {
     public var textDocumentSync: Int?
     public var completionProvider: CompletionOptions?
     public var hoverProvider: Bool?
@@ -348,6 +386,26 @@ public struct ServerCapabilities: Codable, Sendable {
         self.definitionProvider = definitionProvider
         self.codeActionProvider = codeActionProvider
         self.workspaceSymbolProvider = workspaceSymbolProvider
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        textDocumentSync = try? container.decode(Int.self, forKey: .textDocumentSync)
+        completionProvider = try? container.decode(CompletionOptions.self, forKey: .completionProvider)
+        hoverProvider = try? container.decode(Bool.self, forKey: .hoverProvider)
+        signatureHelpProvider = try? container.decode([String].self, forKey: .signatureHelpProvider)
+        referencesProvider = try? container.decode(Bool.self, forKey: .referencesProvider)
+        documentSymbolProvider = try? container.decode(Bool.self, forKey: .documentSymbolProvider)
+        formattingProvider = try? container.decode(Bool.self, forKey: .formattingProvider)
+        definitionProvider = try? container.decode(Bool.self, forKey: .definitionProvider)
+        codeActionProvider = try? container.decode(Bool.self, forKey: .codeActionProvider)
+        workspaceSymbolProvider = try? container.decode(Bool.self, forKey: .workspaceSymbolProvider)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case textDocumentSync, completionProvider, hoverProvider, signatureHelpProvider
+        case referencesProvider, documentSymbolProvider, formattingProvider, definitionProvider
+        case codeActionProvider, workspaceSymbolProvider
     }
 
     public var supportsCompletion: Bool { completionProvider != nil }
@@ -476,7 +534,16 @@ public struct ClientCapabilities: Encodable, Sendable {
         self.workspace = workspace
     }
 
-    public static let `default` = ClientCapabilities()
+    /// Capabilities advertised during `initialize`. Completion is *static*
+    /// (`dynamicRegistration: false`): sourcekit-lsp's dynamically-registered completion
+    /// path emits structurally-invalid JSON for some items (e.g. a `textEdit` value that is
+    /// a bare `{<docstring>}`, stray `"markdown"` tokens, `sortText` carrying a docstring),
+    /// which makes `JSONDecoder` reject the whole 200KB response. With a static
+    /// `completionProvider` capability sourcekit serves the same completions as compact,
+    /// strictly-valid JSON. See docs/MEMORY.md #20.
+    public static let `default` = ClientCapabilities(
+        textDocument: .init(completion: .init(dynamicRegistration: false))
+    )
 }
 
 public struct InitializeResult: Decodable, Sendable {
@@ -515,11 +582,20 @@ struct AnyEncodable: Encodable {
     }
 }
 
-/// Anything the transport can decode, to route responses and notifications.
+/// Anything the transport can decode, to route responses, requests and notifications.
+///
+/// LSP request ids can be a number or a string: outgoing requests use ints (`1`, `2`, …)
+/// and some servers — sourcekit-lsp included — initiate their own requests with string
+/// ids (`"sk-0"`, `"sk-1"`, …). Every field is decoded leniently so that a shape we don't
+/// model yet can never cause a message to be silently dropped.
 struct RawMessage: Decodable {
+    /// Numeric id — present for responses to requests we sent.
     let id: Int?
+    /// String id — present for server-initiated requests (e.g. `client/registerCapability`).
+    let stringID: String?
     let method: String?
     let result: JSONValue?
+    let params: JSONValue?
     let error: ResponseError?
 
     struct ResponseError: Decodable, Error {
@@ -530,15 +606,20 @@ struct RawMessage: Decodable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, method, result, error
+        case id, method, result, params, error
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(Int.self, forKey: .id)
-        method = try container.decodeIfPresent(String.self, forKey: .method)
-        result = try container.decodeIfPresent(JSONValue.self, forKey: .result)
-        error = try container.decodeIfPresent(ResponseError.self, forKey: .error)
+        // `try?` per field: a string id is not an `Int`, a numeric id is not a `String`,
+        // and an absent key decodes to `nil` rather than throwing. This keeps a server
+        // request like `{"id":"sk-0",...}` from failing the whole `RawMessage`.
+        id = try? container.decode(Int.self, forKey: .id)
+        stringID = try? container.decode(String.self, forKey: .id)
+        method = try? container.decodeIfPresent(String.self, forKey: .method)
+        result = try? container.decodeIfPresent(JSONValue.self, forKey: .result)
+        params = try? container.decodeIfPresent(JSONValue.self, forKey: .params)
+        error = try? container.decodeIfPresent(ResponseError.self, forKey: .error)
     }
 }
 

@@ -162,7 +162,8 @@ struct MainWindowView: View {
             CodeEditorView(
                 document: document,
                 theme: appState.theme,
-                editorState: appState.editorState
+                editorState: appState.editorState,
+                appState: appState
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

@@ -154,6 +154,44 @@ private struct ResponseRoutingTests {
             Issue.record("a notification should not be routed as a response")
         }
     }
+
+    @Test("a server-initiated request with a string id decodes instead of being dropped")
+    func stringIdServerRequestDecodes() throws {
+        let message = try decode(
+            #"{"id":"sk-0","method":"client/registerCapability","params":{"registrations":[]}}"#
+        )
+        #expect(message.id == nil)
+        #expect(message.stringID == "sk-0")
+        #expect(message.method == "client/registerCapability")
+        guard case .object = message.params else {
+            Issue.record("expected object params")
+            return
+        }
+    }
+
+    @Test("repairMalformedJSON fixes bare-string-object values and keeps the message routable")
+    func repairBareStringObject() throws {
+        let invalid = #"{"id":2,"result":{"items":[{"label":"a","textEdit":{"doc string"}}]}}"#.data(using: .utf8)!
+        // Strict decode of the malformed message fails.
+        #expect((try? JSONDecoder().decode(RawMessage.self, from: invalid)) == nil)
+        let repairedOpt = JSONRPCTransport.repairMalformedJSON(invalid)
+        #expect(repairedOpt != nil)
+        guard let repaired = repairedOpt else {
+            Issue.record("repair returned nil")
+            return
+        }
+        let message = try JSONDecoder().decode(RawMessage.self, from: repaired)
+        #expect(message.id == 2)
+        #expect(message.stringID == nil)
+        #expect(message.method == nil)
+        switch JSONRPCTransport.routeResponse(message) {
+        case .resume(let data):
+            let list = try JSONDecoder().decode(CompletionList.self, from: data)
+            #expect(list.items.map(\.label) == ["a"])
+        default:
+            Issue.record("expected a resume action")
+        }
+    }
 }
 
 // MARK: - Round-trip and crash behaviour
