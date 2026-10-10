@@ -31,6 +31,11 @@ public struct StatusBarView: View {
                 item(document.lineEnding == .lf ? "LF" : document.lineEnding == .crlf ? "CRLF" : "CR")
                 separator
                 item(document.language.displayName)
+
+                if appState.pendingExternalChange != nil {
+                    separator
+                    item("⚠️ Changed on disk")
+                }
             } else {
                 Spacer(minLength: 0)
             }

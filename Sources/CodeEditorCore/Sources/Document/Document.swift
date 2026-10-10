@@ -157,6 +157,11 @@ public final class Document: Identifiable {
     /// Read-only flag.
     public private(set) var isReadOnly: Bool = false
 
+    /// The on-disk modification date captured when the document was last read. Used to
+    /// detect that the file changed on disk since it was opened, so `save()` can refuse to
+    /// silently overwrite an external change. `nil` for untitled documents.
+    public private(set) var fileModificationDate: Date?
+
     /// The primary selection.
     public private(set) var selection: TextSelection = TextSelection()
 
@@ -230,12 +235,19 @@ public final class Document: Identifiable {
             throw DocumentError.failedToConvertToUTF8(url, "UTF-8")
         }
 
-        return Document(
+        let modificationDate =
+            try? url
+            .resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate
+
+        let document = Document(
             content: content,
             language: language(for: url),
             lineEnding: .detect(from: content),
             url: url
         )
+        document.fileModificationDate = modificationDate
+        return document
     }
 
     /// Resolve a language from a file's extension.
@@ -441,14 +453,27 @@ public final class Document: Identifiable {
 
     // MARK: - Persistence
 
-    public func save() async throws {
+    /// Write the document to disk.
+    ///
+    /// Throws `DocumentError.changedOnDisk` when the file on disk has been modified since
+    /// the document was loaded and `force` is `false`, so a save can't silently clobber an
+    /// external edit. Pass `force: true` to overwrite anyway (the "Save Anyway" escape hatch
+    /// for when the on-disk change was intentional).
+    public func save(force: Bool = false) async throws {
         guard let url else { throw DocumentError.noURL }
+        if !force {
+            try throwIfChangedOnDisk()
+        }
         let data = Data(content.utf8)
         do {
             try await Task.detached { try data.write(to: url) }.value
         } catch {
             throw DocumentError.failedToWrite(url, error.localizedDescription)
         }
+        fileModificationDate =
+            try? url
+            .resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate
         isModified = false
         delegate?.documentDidSave(self)
     }
@@ -461,6 +486,47 @@ public final class Document: Identifiable {
     public func close() {
         delegate?.documentDidClose(self)
     }
+
+    // MARK: - External change
+
+    /// Throws when the file on disk has a modification date newer than the one captured at
+    /// load, i.e. it was changed outside the editor. Untitled documents are never guarded.
+    private func throwIfChangedOnDisk() throws {
+        guard let url, let loaded = fileModificationDate else { return }
+        let diskDate =
+            try url
+            .resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate
+        if let diskDate, diskDate > loaded {
+            throw DocumentError.changedOnDisk(url, modificationDate: diskDate)
+        }
+    }
+
+    /// Read the current on-disk content for this document's URL.
+    public func reloadFromDisk() async throws -> String {
+        guard let url else { throw DocumentError.noURL }
+        let data = try await Task.detached { try Data(contentsOf: url) }.value
+        guard let string = String(data: data, encoding: .utf8) else {
+            throw DocumentError.failedToConvertToUTF8(url, "UTF-8")
+        }
+        return string
+    }
+
+    /// Reload the document's content and modification date from disk, discarding in-memory
+    /// edits and clearing the modified flag. Used to resolve an external change when the
+    /// on-disk version is the one to keep.
+    public func revert() async throws {
+        guard let url else { throw DocumentError.noURL }
+        let refreshed = try await reloadFromDisk()
+        content = refreshed
+        lines = Self.split(refreshed, by: lineEnding)
+        fileModificationDate =
+            try? url
+            .resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate
+        isModified = false
+        delegate?.documentDidModify(self)
+    }
 }
 
 // MARK: - Errors
@@ -470,6 +536,7 @@ public enum DocumentError: LocalizedError, Equatable {
     case failedToRead(URL, String)
     case failedToWrite(URL, String)
     case failedToConvertToUTF8(URL, String)
+    case changedOnDisk(URL, modificationDate: Date)
 
     public var errorDescription: String? {
         switch self {
@@ -481,6 +548,8 @@ public enum DocumentError: LocalizedError, Equatable {
             "Could not save \(url.lastPathComponent): \(reason)"
         case .failedToConvertToUTF8(let url, let encoding):
             "\(url.lastPathComponent) is not valid \(encoding) text."
+        case .changedOnDisk(let url, _):
+            "“\(url.lastPathComponent)” changed on disk since you opened it."
         }
     }
 }

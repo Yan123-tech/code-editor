@@ -30,6 +30,10 @@ public final class AppState {
     /// regardless of whether the tab strip or the menu asked.
     public var pendingClose: CodeEditorCore.Document?
 
+    /// A document whose file changed on disk since it was opened, surfaced as a
+    /// confirmation dialog offering Revert / Save Anyway instead of a silent overwrite.
+    public var pendingExternalChange: CodeEditorCore.Document?
+
     // Quick open
     public var isQuickOpenVisible = false
     public var quickOpenQuery = ""
@@ -209,8 +213,14 @@ public final class AppState {
         }
     }
 
+    /// Save every modified document through `performSave`, so a file that changed on disk
+    /// surfaces the same Revert / Save-Anyway dialog as a single-document save.
     public func saveAllDocuments() {
-        Task { await documentManager.saveAll() }
+        Task {
+            for document in documentManager.documents where document.isModified {
+                await performSave(document)
+            }
+        }
     }
 
     /// Save every modified document and report whether the job actually finished.
@@ -257,6 +267,29 @@ public final class AppState {
             } else {
                 try await document.save()
             }
+        } catch DocumentError.changedOnDisk {
+            pendingExternalChange = document
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Reload `document` from disk, resolving a pending external-change prompt. The
+    /// on-disk version wins.
+    public func revertDocument(_ document: CodeEditorCore.Document) async {
+        pendingExternalChange = nil
+        do {
+            try await document.revert()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Overwrite `document`, ignoring an external change. Resolves the pending prompt.
+    public func saveAnyway(_ document: CodeEditorCore.Document) async {
+        pendingExternalChange = nil
+        do {
+            try await document.save(force: true)
         } catch {
             errorMessage = error.localizedDescription
         }
