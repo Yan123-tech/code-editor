@@ -94,6 +94,12 @@ public final class LSPClient {
             isConnected = true
             lastError = nil
 
+            await transport.setDisconnectionHandler { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.handleTransportDisconnect()
+                }
+            }
+
             await transport.onNotification { method, params in
                 Task { @MainActor [weak self] in
                     self?.handleNotification(method: method, params: params)
@@ -131,6 +137,17 @@ public final class LSPClient {
         serverCapabilities = nil
         openURIs.removeAll()
         versions.removeAll()
+    }
+
+    /// Called by the transport when the server process exits unexpectedly. Marks the
+    /// client not-ready so `languageServer(for:)` will drop and reconnect on the next
+    /// request, rather than leaving callers parked on a dead connection.
+    private func handleTransportDisconnect() {
+        guard isConnected else { return }
+        isConnected = false
+        isReady = false
+        serverCapabilities = nil
+        lastError = "SourceKit-LSP stopped responding."
     }
 
     // MARK: - Document synchronization
