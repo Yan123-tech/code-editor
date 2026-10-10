@@ -211,6 +211,25 @@ public final class AppState {
         Task { await documentManager.saveAll() }
     }
 
+    /// Save every modified document and report whether the job actually finished.
+    ///
+    /// Returns false when anything was abandoned — a cancelled location panel, a failed
+    /// write. The quit handler treats false as "do not proceed": after this returns, a
+    /// document that is still modified still holds the user's work.
+    ///
+    /// The decision itself belongs to `DocumentManager`, which can be tested without a
+    /// window; only the saving needs the panels, which is why it is injected.
+    @discardableResult
+    public func saveAllModified() async -> Bool {
+        await documentManager.saveAllModified { document in
+            if document.isUntitled {
+                await self.promptForSaveLocation(for: document)
+            } else {
+                await self.performSave(document)
+            }
+        }
+    }
+
     /// Prompt for a location, then save. Unsaved documents start as "Untitled N".
     public func promptForSaveLocation(for document: CodeEditorCore.Document) async {
         let panel = NSSavePanel()

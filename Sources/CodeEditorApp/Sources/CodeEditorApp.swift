@@ -6,6 +6,7 @@ import SwiftUI
 @main
 struct CodeEditorApp: App {
     @State private var appState = AppState()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         // A single window: AppState is shared and per-window state would fight it.
@@ -14,6 +15,11 @@ struct CodeEditorApp: App {
         Window("Code Editor", id: "main-window") {
             MainWindowView(appState: appState)
                 .frame(minWidth: 720, minHeight: 480)
+                .onAppear {
+                    // The delegate exists before any window does, so it has to be handed
+                    // the state once there is one. Nil means "nothing to lose" meanwhile.
+                    appDelegate.appState = appState
+                }
         }
         .defaultSize(width: 1200, height: 800)
         .commands { commands }

@@ -182,6 +182,111 @@ struct DocumentTests {
     }
 }
 
+// MARK: - Save-all-modified
+
+@MainActor
+@Suite("saveAllModified")
+struct SaveAllModifiedTests {
+    /// A document with a real file behind it, so saving is a real save rather than a
+    /// simulation. `setContent` cannot stand in for one — it *sets* `isModified`, which is
+    /// the opposite of what saving does.
+    private func savedDocument(_ content: String) throws -> (Document, URL) {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("codeeditor-saveall-\(UUID().uuidString).swift")
+        try "original".write(to: url, atomically: true, encoding: .utf8)
+
+        // Construct with different content first: setContent guards on equality and
+        // would otherwise no-op, leaving the document clean and the test vacuous.
+        let document = Document(content: "original", language: .swift, url: url)
+        document.setContent(content)
+        return (document, url)
+    }
+
+    @Test("nothing modified means nothing to do and success")
+    func cleanDocumentsSucceed() async {
+        let manager = DocumentManager()
+        manager.open(Document(content: "untouched", language: .swift))
+        var savedAny = false
+
+        let result = await manager.saveAllModified { _ in savedAny = true }
+
+        #expect(result)
+        #expect(!savedAny)
+    }
+
+    @Test("a document that saves reports success")
+    func savesModifiedDocument() async throws {
+        let (document, url) = try savedDocument("edited")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let manager = DocumentManager()
+        manager.open(document)
+
+        let result = await manager.saveAllModified { try? await $0.save() }
+
+        let onDisk = try String(contentsOf: url, encoding: .utf8)
+        #expect(result)
+        #expect(!document.isModified)
+        #expect(onDisk == "edited")
+    }
+
+    @Test("a save that does not take reports failure")
+    func abandonedSaveReportsFailure() async {
+        let manager = DocumentManager()
+        let untitled = Document(content: "original", language: .swift)
+        manager.open(untitled)
+        untitled.setContent("edited")
+
+        // The save action does nothing — this is what a cancelled location panel looks like
+        // from here. The caller is about to discard the buffer, so it must be told.
+        let result = await manager.saveAllModified { _ in }
+
+        #expect(!result)
+        #expect(untitled.isModified)
+    }
+
+    @Test("one abandoned save fails the whole job")
+    func mixedOutcomesReportFailure() async throws {
+        let (saved, savedURL) = try savedDocument("one edited")
+        defer { try? FileManager.default.removeItem(at: savedURL) }
+
+        let abandoned = Document(content: "original", language: .swift)
+        abandoned.setContent("two edited")
+
+        let manager = DocumentManager()
+        manager.open(saved)
+        manager.open(abandoned)
+
+        let result = await manager.saveAllModified { document in
+            // One document saves; the other stands in for a cancelled panel.
+            guard document === saved else { return }
+            try? await document.save()
+        }
+
+        #expect(!result)
+        #expect(!saved.isModified)
+        #expect(abandoned.isModified)
+    }
+
+    @Test("only modified documents are offered")
+    func visitsOnlyModifiedDocuments() async throws {
+        let (dirty, dirtyURL) = try savedDocument("dirty")
+        defer { try? FileManager.default.removeItem(at: dirtyURL) }
+        let clean = Document(content: "clean", language: .swift)
+
+        let manager = DocumentManager()
+        manager.open(clean)
+        manager.open(dirty)
+
+        var visited: [String] = []
+        _ = await manager.saveAllModified { document in
+            visited.append(document.content)
+            try? await document.save()
+        }
+
+        #expect(visited == ["dirty"])
+    }
+}
+
 // MARK: - Document persistence
 
 @MainActor

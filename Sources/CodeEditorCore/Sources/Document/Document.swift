@@ -534,6 +534,33 @@ public final class DocumentManager {
         }
     }
 
+    /// Save every modified document through `save`, and report whether the job finished.
+    ///
+    /// Returns false when anything was abandoned — a cancelled location panel, a failed
+    /// write. The test for "did it take" is whether the document is *still modified*
+    /// afterwards, which catches both without the caller having to know why.
+    ///
+    /// The save action is injected because saving properly needs UI: an untitled document
+    /// requires a location panel, which Core may not present. Callers own that, Core owns
+    /// this decision.
+    ///
+    /// The caller is about to discard buffers, so false must mean "keep the work" rather
+    /// than "something went wrong, carry on".
+    @discardableResult
+    public func saveAllModified(save: (Document) async -> Void) async -> Bool {
+        var savedEverything = true
+
+        for document in documents where document.isModified {
+            await save(document)
+            // Still modified means the save did not take.
+            if document.isModified {
+                savedEverything = false
+            }
+        }
+
+        return savedEverything
+    }
+
     private func add(_ document: Document) {
         document.delegate = self
         documents.append(document)
