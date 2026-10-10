@@ -347,6 +347,11 @@ look like a broken app. If upstream 0.16 diffs text on update, delete the coordi
 `.id(document.id)` on the editor is the fallback if this ever stops working: correct, but it
 rebuilds the tree-sitter highlighter on every tab switch and discards scroll and cursor state.
 
+**No test can catch this.** The defect lives in upstream's view-update logic, not in anything
+`CodeEditorCore` owns, so the only check is running the app and opening two files. That check
+is now part of the definition of done in [PROCESS.md](PROCESS.md). It found this, a chevron
+that stopped working, and a gutter bleeding through the tab strip — after 68 passing tests.
+
 ---
 
 ---
@@ -368,4 +373,5 @@ rebuilds the tree-sitter highlighter on every tab switch and discards scroll and
 | Why did the status bar say "1 line selected"? | #17. A caret is not a selection. |
 | Does `Scripts/build-app.sh` build? | Only since the fix in #16. Run it from clean to check. |
 | Why do all my tabs show the same file? | #18. `SourceEditor` does not diff text on update. |
+| What is not covered by `swift test`? | The editor binding. Open two files and switch. See #18. |
 | Where do I write "this does not work"? | Here, and [CURRENT_STATE.md](CURRENT_STATE.md). |

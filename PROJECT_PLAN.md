@@ -38,7 +38,7 @@ tracked in GitHub, ordered in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 - [ ] Diagnostics render
 - [ ] No leaks in a 30-minute session
 - [ ] Unsaved work is guarded on quit — **the one remaining path to data loss**, and it is not an issue yet
-- [ ] The redesign has been reviewed by someone who can see it
+- [x] The redesign has been reviewed by someone who can see it — it found #15–#17, all since fixed
 
 ## Risks
 
