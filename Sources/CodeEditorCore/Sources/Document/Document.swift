@@ -23,24 +23,55 @@ public struct Language: Sendable, Equatable, Hashable {
 }
 
 /// Standard document languages.
+///
+/// Each identifier here must match a `TreeSitterLanguage` case upstream, because
+/// `Language.codeLanguage` (in `CodeEditorUI`) resolves highlighting by matching
+/// `identifier` against `CodeLanguage.id.rawValue`. An identifier with no upstream
+/// grammar silently falls back to plain text — see MEMORY.md #19.
 extension Language {
     public static let swift = Language(identifier: "swift", displayName: "Swift", fileExtensions: ["swift"])
     public static let javascript = Language(
         identifier: "javascript", displayName: "JavaScript", fileExtensions: ["js", "jsx", "mjs", "cjs"])
     public static let typescript = Language(
-        identifier: "typescript", displayName: "TypeScript", fileExtensions: ["ts", "tsx"])
+        identifier: "typescript", displayName: "TypeScript", fileExtensions: ["ts"])
+    public static let tsx = Language(identifier: "tsx", displayName: "TSX", fileExtensions: ["tsx"])
     public static let python = Language(identifier: "python", displayName: "Python", fileExtensions: ["py"])
     public static let json = Language(identifier: "json", displayName: "JSON", fileExtensions: ["json"])
     public static let markdown = Language(
         identifier: "markdown", displayName: "Markdown", fileExtensions: ["md", "markdown"])
-    public static let html = Language(identifier: "html", displayName: "HTML", fileExtensions: ["html", "htm"])
+    public static let html = Language(
+        identifier: "html", displayName: "HTML", fileExtensions: ["html", "htm", "xml"])
     public static let css = Language(identifier: "css", displayName: "CSS", fileExtensions: ["css", "scss", "sass"])
     public static let shell = Language(
-        identifier: "shell", displayName: "Shell", fileExtensions: ["sh", "bash", "zsh"])
+        identifier: "bash", displayName: "Shell", fileExtensions: ["sh", "bash", "zsh"])
     public static let yaml = Language(identifier: "yaml", displayName: "YAML", fileExtensions: ["yml", "yaml"])
     public static let toml = Language(identifier: "toml", displayName: "TOML", fileExtensions: ["toml"])
-    public static let text = Language(identifier: "plaintext", displayName: "Plain Text", fileExtensions: ["txt"])
-    public static let unknown = Language(identifier: "plaintext", displayName: "Plain Text")
+    public static let go = Language(identifier: "go", displayName: "Go", fileExtensions: ["go"])
+    public static let rust = Language(identifier: "rust", displayName: "Rust", fileExtensions: ["rs"])
+    public static let java = Language(identifier: "java", displayName: "Java", fileExtensions: ["java"])
+    public static let kotlin = Language(identifier: "kotlin", displayName: "Kotlin", fileExtensions: ["kt", "kts"])
+    public static let php = Language(identifier: "php", displayName: "PHP", fileExtensions: ["php"])
+    public static let ruby = Language(identifier: "ruby", displayName: "Ruby", fileExtensions: ["rb"])
+    public static let c = Language(identifier: "c", displayName: "C", fileExtensions: ["c", "h"])
+    public static let cpp = Language(
+        identifier: "cpp", displayName: "C++", fileExtensions: ["cpp", "cc", "cxx", "hpp"])
+    public static let csharp = Language(identifier: "cSharp", displayName: "C#", fileExtensions: ["cs"])
+    public static let lua = Language(identifier: "lua", displayName: "Lua", fileExtensions: ["lua"])
+    public static let perl = Language(identifier: "perl", displayName: "Perl", fileExtensions: ["pl", "pm"])
+    public static let scala = Language(identifier: "scala", displayName: "Scala", fileExtensions: ["scala"])
+    public static let sql = Language(identifier: "sql", displayName: "SQL", fileExtensions: ["sql"])
+    public static let dart = Language(identifier: "dart", displayName: "Dart", fileExtensions: ["dart"])
+    public static let julia = Language(identifier: "julia", displayName: "Julia", fileExtensions: ["jl"])
+    public static let haskell = Language(identifier: "haskell", displayName: "Haskell", fileExtensions: ["hs"])
+    public static let elixir = Language(identifier: "elixir", displayName: "Elixir", fileExtensions: ["ex", "exs"])
+    public static let objc = Language(identifier: "objc", displayName: "Objective-C", fileExtensions: ["m", "mm"])
+    public static let dockerfile = Language(
+        identifier: "dockerfile", displayName: "Dockerfile", fileExtensions: ["dockerfile"])
+    public static let zig = Language(identifier: "zig", displayName: "Zig", fileExtensions: ["zig"])
+    public static let verilog = Language(identifier: "verilog", displayName: "Verilog", fileExtensions: ["v", "sv"])
+    public static let text = Language(
+        identifier: "plainText", displayName: "Plain Text", fileExtensions: ["txt", "cfg", "conf"])
+    public static let unknown = Language(identifier: "plainText", displayName: "Plain Text")
 }
 
 // MARK: - LineEnding
@@ -207,15 +238,23 @@ public final class Document: Identifiable {
         )
     }
 
-    /// Resolve a language from a file extension.
+    /// Resolve a language from a file's extension.
     public static func language(for url: URL) -> Language {
         let ext = url.pathExtension.lowercased()
-        let all: [Language] = [
-            .swift, .javascript, .typescript, .python, .json, .markdown,
-            .html, .css, .shell, .yaml, .toml, .text,
-        ]
-        return all.first { $0.fileExtensions.contains(ext) } ?? .unknown
+        return allLanguages.first { $0.fileExtensions.contains(ext) } ?? .unknown
     }
+
+    /// Every language the editor can describe, ordered for menus.
+    ///
+    /// Order matters only where extensions overlap; `language(for:)` takes the first
+    /// match. JSX resolves to JavaScript because JavaScript's grammar is a superset here.
+    public static let allLanguages: [Language] = [
+        .swift, .javascript, .tsx, .typescript, .python, .json, .markdown,
+        .html, .css, .shell, .yaml, .toml, .go, .rust, .java, .kotlin,
+        .php, .ruby, .c, .cpp, .csharp, .objc, .lua, .perl, .scala, .sql,
+        .dart, .julia, .haskell, .elixir, .dockerfile, .zig, .verilog,
+        .text,
+    ]
 
     private static func split(_ content: String, by lineEnding: LineEnding) -> [String] {
         var lines = content.components(separatedBy: lineEnding.character)

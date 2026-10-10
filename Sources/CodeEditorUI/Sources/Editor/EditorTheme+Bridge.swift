@@ -21,10 +21,7 @@ extension CodeLanguage {
 
 extension Language {
     /// Every language the editor can describe, ordered for menus.
-    static let allLanguages: [Language] = [
-        .swift, .javascript, .typescript, .python, .json, .markdown,
-        .html, .css, .shell, .yaml, .toml, .text,
-    ]
+    static let allLanguages: [Language] = CodeEditorCore.Language.allLanguages
 }
 
 extension Theme {
