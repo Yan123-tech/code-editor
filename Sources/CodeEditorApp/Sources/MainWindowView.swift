@@ -86,6 +86,27 @@ struct MainWindowView: View {
         } message: {
             Text("Unsaved changes will be lost if you discard them.")
         }
+        .confirmationDialog(
+            "“\(appState.pendingExternalChange?.name ?? "")” changed on disk",
+            isPresented: externalChangeBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Reload from Disk") {
+                if let document = appState.pendingExternalChange {
+                    Task { await appState.revertDocument(document) }
+                }
+            }
+            Button("Save Anyway", role: .destructive) {
+                if let document = appState.pendingExternalChange {
+                    Task { await appState.saveAnyway(document) }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                appState.pendingExternalChange = nil
+            }
+        } message: {
+            Text("Reload to keep the on-disk changes, or save to overwrite them.")
+        }
         .alert("Code Editor", isPresented: errorBinding) {
             Button("OK", role: .cancel) { appState.errorMessage = nil }
         } message: {
@@ -284,6 +305,13 @@ struct MainWindowView: View {
         Binding(
             get: { appState.errorMessage != nil },
             set: { if !$0 { appState.errorMessage = nil } }
+        )
+    }
+
+    private var externalChangeBinding: Binding<Bool> {
+        Binding(
+            get: { appState.pendingExternalChange != nil },
+            set: { if !$0 { appState.pendingExternalChange = nil } }
         )
     }
 }
