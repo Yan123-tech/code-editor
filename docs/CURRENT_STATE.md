@@ -43,7 +43,14 @@ Create file, create folder, rename, delete, reveal in Finder, copy path. Dotfile
 New items land beside the active document, or at the workspace root.
 
 **Editing.** `SourceEditor` from CodeEditSourceEditor 0.15, bound two-way to
-`Document.content`. Tree-sitter highlighting across roughly 25 languages, line-number
+`Document.content`. Three defects found in visual review of [#14](https://github.com/Yan123-tech/code-editor/issues/14)
+were fixed: every tab showed the first file opened
+([#15](https://github.com/Yan123-tech/code-editor/issues/15) — upstream does not diff text on
+update), a selected folder's chevron did nothing
+([#16](https://github.com/Yan123-tech/code-editor/issues/16)), and the gutter drew through the
+translucent tab strip while rubber-band scrolling
+([#17](https://github.com/Yan123-tech/code-editor/issues/17) — fix applied, not yet
+confirmed). Tree-sitter highlighting across roughly 25 languages, line-number
 gutter, bracket-pair emphasis, indentation and reformat-at-column, word wrap, undo stack
 shared with the document model. Peripherals are configured explicitly: gutter on, minimap
 off by default with a toggle, folding ribbon and invisibles toggleable, smart quotes and
@@ -189,8 +196,10 @@ feel urgent, but it is C interop behind a protocol and nothing else depends on i
 
 ### Housekeeping before the next branch
 
-- [#14](https://github.com/Yan123-tech/code-editor/issues/14) has one unchecked box: a human
-  visual review of the redesign. Everything else about it is verified except that.
+- [#16](https://github.com/Yan123-tech/code-editor/issues/16) and
+  [#17](https://github.com/Yan123-tech/code-editor/issues/17) are fixed but were not driven in
+  the running app — synthetic accessibility events do not reach SwiftUI rows, and the gutter
+  overlap only appears mid-gesture. Both need a second look.
 - `Scripts/build-app.sh` needs running from a clean checkout before it is believed again.
   See [MEMORY.md #16](MEMORY.md#16-scriptsbuild-appsh-only-fails-from-a-clean-checkout).
 

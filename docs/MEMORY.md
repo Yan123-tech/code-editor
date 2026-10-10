@@ -320,6 +320,37 @@ in the UI.
 
 ---
 
+## 18. `SourceEditor` never diffs its text on update
+
+`SourceEditor.updateNSViewController` compares language, configuration and highlight
+providers. It does **not** compare the text behind its `Binding<String>`. Text is pushed once,
+in `makeNSViewController`:
+
+```swift
+case .binding(let binding):
+    controller.textView.setText(binding.wrappedValue)
+```
+
+SwiftUI reuses the view controller, so `make` is not called again when the document changes.
+Every tab therefore shows the first file opened, until you switch to a file of a *different
+language*, which forces the reload.
+
+**`DocumentTextCoordinator` exists for this and only this.** It captures the controller in
+`prepareCoordinator` — the one hook that hands it out — and `CodeEditorView` calls
+`reload(text:)` on `document.id` change. It compares against `textView.string` first, so
+reloading identical text is free, and `Document.setContent` guards on equality so the
+write-back records no edit.
+
+Do not remove it because it looks redundant — it is not, and the symptom is severe enough to
+look like a broken app. If upstream 0.16 diffs text on update, delete the coordinator then.
+
+`.id(document.id)` on the editor is the fallback if this ever stops working: correct, but it
+rebuilds the tree-sitter highlighter on every tab switch and discards scroll and cursor state.
+
+---
+
+---
+
 ## Quick reference
 
 | Question | Answer |
@@ -336,4 +367,5 @@ in the UI.
 | Can I derive isDark from colours? | No. #11. |
 | Why did the status bar say "1 line selected"? | #17. A caret is not a selection. |
 | Does `Scripts/build-app.sh` build? | Only since the fix in #16. Run it from clean to check. |
+| Why do all my tabs show the same file? | #18. `SourceEditor` does not diff text on update. |
 | Where do I write "this does not work"? | Here, and [CURRENT_STATE.md](CURRENT_STATE.md). |

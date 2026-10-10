@@ -181,6 +181,10 @@ Anything that grows a filesystem dependency should use it.
 
 - `SourceEditor` and `EditorTheme.Attribute` — contained in `CodeEditorView.swift` and
   `EditorTheme+Bridge.swift`. Both are upstream, both are pre-1.0. See [STACK.md](STACK.md).
+- `DocumentTextCoordinator` — a `TextViewCoordinator` that captures the live
+  `TextViewController` so `CodeEditorView` can reload its text. Exists because
+  `updateNSViewController` does not diff the text behind the binding. A fourth upstream-type
+  file is expected and accounted for; see [MEMORY.md #18](MEMORY.md).
 - `SourceEditorState.findPanelVisible` — `EditorState.isFindVisible` is our flag,
   `CodeEditorView` syncs it both ways, and the upstream coordinator opens the panel when
   state disagrees with it. The panel stays the authority on its own visibility.
