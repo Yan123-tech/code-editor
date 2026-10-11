@@ -90,7 +90,7 @@ final class LSPCompletionItem: CodeSuggestionEntry {
 /// bespoke SwiftUI popup is needed, see [docs/MEMORY.md](../../../docs/MEMORY.md).
 @MainActor
 final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
-    CodeSuggestionDelegate
+    CodeSuggestionDelegate, JumpToDefinitionDelegate
 {
     private weak var controller: TextViewController?
     private let theme: Theme
@@ -299,6 +299,88 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     func completionWindowDidClose() {
         lastCompletionItems = nil
         crashShown = false
+    }
+
+    // MARK: - JumpToDefinitionDelegate
+
+    /// Builds a definition link at the hovered/⌘-clicked range. Also fetches a hover
+    /// from the server so the link's `documentation` is populated — this gives the
+    /// user both "go to definition" and a documentation tooltip inside the same popover.
+    func queryLinks(
+        forRange range: NSRange,
+        textView: TextViewController
+    ) async -> [JumpToDefinitionLink]? {
+        guard let uri = currentURI,
+            let client = await appState?.languageServer(for: document.language.identifier),
+            client.isReady
+        else { return nil }
+
+        // The NSRange is an NSString index; for ASCII source that == UTF-16, so
+        // `lspPosition(for:)` gives the same Position the server expects.
+        guard let pos = document.lspPosition(for: range.location) else { return nil }
+
+        let lspPos = CodeEditorLSP.Position(line: pos.line, character: pos.character)
+
+        async let def = client.definition(at: lspPos, uri: uri)
+        async let hover = client.hover(at: lspPos, uri: uri)
+
+        guard let location = try? await def else {
+            // No definition found — don't present a link (and don't beep).
+            return nil
+        }
+
+        let hoverDoc = try? await hover?.contents.value
+        return [link(from: location, hover: hoverDoc)]
+    }
+
+    /// Open a definition link in a different document.
+    /// Same-document links (url == nil) are handled by the upstream `JumpToDefinitionModel`
+    /// via `textView.selectionManager.setSelectedRange`, so this is only called for
+    /// cross-file navigation.
+    func openLink(link: JumpToDefinitionLink) {
+        guard let url = link.url else { return }
+        appState?.openFile(url)
+    }
+
+    // MARK: - Link building
+
+    /// Convert an LSP `Location` to a `JumpToDefinitionLink`.
+    /// - Same-file locations (uri == currentURI): `url = nil`, `targetRange` is an
+    ///   `NSRange` computed from the document so the upstream can set the selection directly.
+    /// - Cross-file locations: `url` is set; `targetRange` carries the LSP range as a
+    ///   1-indexed `CursorPosition` for when the destination document loads.
+    private func link(
+        from location: Location,
+        hover: String?
+    ) -> JumpToDefinitionLink {
+        if location.uri == currentURI {
+            let start = document.offset(forLine: location.range.start.line, column: location.range.start.character)
+            let end = document.offset(forLine: location.range.end.line, column: location.range.end.character)
+            let range = NSRange(
+                location: start ?? 0,
+                length: max(0, (end ?? 0) - (start ?? 0))
+            )
+            return JumpToDefinitionLink(
+                url: nil,
+                targetRange: CursorPosition(range: range),
+                typeName: "Definition",
+                sourcePreview: " ",
+                documentation: hover
+            )
+        }
+
+        // Different file — the LSP URI may not be a standard file URL.
+        let url = URL(string: location.uri)
+        return JumpToDefinitionLink(
+            url: url,
+            targetRange: CursorPosition(
+                start: .init(line: location.range.start.line + 1, column: location.range.start.character + 1),
+                end: .init(line: location.range.end.line + 1, column: location.range.end.character + 1)
+            ),
+            typeName: url?.lastPathComponent ?? location.uri,
+            sourcePreview: " ",
+            documentation: hover
+        )
     }
 
     // MARK: - Diagnostics
