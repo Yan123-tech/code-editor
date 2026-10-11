@@ -20,10 +20,10 @@ tracked in GitHub, ordered in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 
 | # | Issue | Scope |
 |---|---|---|
-| 1 | [LSP completion](https://github.com/Yan123-tech/code-editor/issues/1) | Connect `LSPClient` via a `TextViewCoordinator`; fuzzy-filtered popup, Tab/Enter to accept |
+| 1 | [LSP completion](https://github.com/Yan123-tech/code-editor/issues/1) — wired | Connect `LSPClient` via a `TextViewCoordinator`; fuzzy-filtered popup, Tab/Enter to accept |
 | 2 | [Diagnostics](https://github.com/Yan123-tech/code-editor/issues/2) | Consume `textDocument/publishDiagnostics`; underline plus gutter markers |
 | 3 | [Hover and go-to-definition](https://github.com/Yan123-tech/code-editor/issues/3) | Tooltips and ⌘-click navigation |
-| 6 | [External change detection](https://github.com/Yan123-tech/code-editor/issues/6) | Reload clean files, prompt on dirty ones |
+| 6 | [External change detection](https://github.com/Yan123-tech/code-editor/issues/6) — done | Reload clean files, prompt on dirty ones |
 | 5 | [PTY terminal](https://github.com/Yan123-tech/code-editor/issues/5) | Real pseudo-terminal, ANSI parsing, SIGINT forwarding |
 | 4 | [Settings panel](https://github.com/Yan123-tech/code-editor/issues/4) | Move persisted preferences out of the Format menu into a discoverable surface |
 | 14 | [Interface redesign](https://github.com/Yan123-tech/code-editor/issues/14) | Landed: native macOS chrome and a real design system |
@@ -31,10 +31,11 @@ tracked in GitHub, ordered in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 ## Quality gates
 
 - [x] Builds with no warnings
-- [x] `swift test` passes (68 tests)
+- [x] `swift test` passes (108 tests on `feature/lsp-completion`; +5 `DocumentExternalChangeTests` on `feature/external-change-detection`; 1 local-only sourcekit E2E, see [docs/MEMORY.md](docs/MEMORY.md))
 - [x] `swift-format lint --strict` clean
 - [ ] CI builds the package — blocked, see [docs/MEMORY.md](docs/MEMORY.md#1-ci-cannot-build-this-package-do-not-try-to-make-it)
-- [ ] Completion works for Swift
+- [x] Completion works for Swift — wired to `sourcekit-lsp`, end-to-end tested locally
+- [x] External file changes since open are guarded on save — [#6](https://github.com/Yan123-tech/code-editor/issues/6)
 - [ ] Diagnostics render
 - [ ] No leaks in a 30-minute session
 - [x] Unsaved work is guarded on quit — [#18](https://github.com/Yan123-tech/code-editor/issues/18). Force-quit and crashes still lose buffers
@@ -48,6 +49,6 @@ tracked in GitHub, ordered in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 | `sourcekit-lsp` is Xcode-toolchain specific | `LanguageServerRegistry.sourceKitLSPPath` probes known paths and returns `nil` rather than failing to launch |
 | URL equality treats `/tmp/x` and `/tmp/x/` as distinct | `FileSystemManager` keys its cache on `standardizedFileURL.path`. [MEMORY.md #3](docs/MEMORY.md) |
 | Terminal uses pipes, not a PTY | Documented in `TerminalSession`, tracked as issue #5 |
-| LSP is the largest module and unused | If issues 1–3 do not land, delete it rather than keep it aspirational. [CURRENT_STATE.md](docs/CURRENT_STATE.md) |
+| LSP is the largest module and now wired for completion | If issues 2–3 don't land, the transport stays justified by completion and the tested E2E. [CURRENT_STATE.md](docs/CURRENT_STATE.md) |
 | A build script that passes while doing nothing | `Scripts/build-app.sh` shipped with `--show-bin-path` on its build commands and only ever failed from a clean checkout. Run it from clean. [MEMORY.md #16](docs/MEMORY.md#16-scriptsbuild-appsh-only-fails-from-a-clean-checkout) |
 | A document that outlives its code | The redesign broke three claims in `docs/`, one of them describing a notification seam that no longer had a poster. Auditing the `.md` files against the code is part of the work, not after it. [AGENTS.md](AGENTS.md) |
