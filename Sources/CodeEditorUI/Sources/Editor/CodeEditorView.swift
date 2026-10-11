@@ -42,7 +42,8 @@ public struct CodeEditorView: View {
             state: $sourceEditorState,
             undoManager: undoManager,
             coordinators: [textCoordinator, lspCoordinator],
-            completionDelegate: lspCoordinator
+            completionDelegate: lspCoordinator,
+            jumpToDefinitionDelegate: lspCoordinator
         )
         .background(theme.background.color)
         .onChange(of: sourceEditorState.cursorPositions) { _, positions in
