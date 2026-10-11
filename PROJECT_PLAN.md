@@ -21,22 +21,22 @@ tracked in GitHub, ordered in [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 | # | Issue | Scope |
 |---|---|---|
 | 1 | [LSP completion](https://github.com/Yan123-tech/code-editor/issues/1) — wired | Connect `LSPClient` via a `TextViewCoordinator`; fuzzy-filtered popup, Tab/Enter to accept |
-| 2 | [Diagnostics](https://github.com/Yan123-tech/code-editor/issues/2) | Consume `textDocument/publishDiagnostics`; underline plus gutter markers |
-| 3 | [Hover and go-to-definition](https://github.com/Yan123-tech/code-editor/issues/3) | Tooltips and ⌘-click navigation |
+| 2 | [Diagnostics](https://github.com/Yan123-tech/code-editor/issues/2) — done | Consume `textDocument/publishDiagnostics`; underline plus status-bar summary |
+| 3 | [Hover and go-to-definition](https://github.com/Yan123-tech/code-editor/issues/3) — done | ⌘-click navigation with server documentation in the link popover |
 | 6 | [External change detection](https://github.com/Yan123-tech/code-editor/issues/6) — done | Reload clean files, prompt on dirty ones |
 | 5 | [PTY terminal](https://github.com/Yan123-tech/code-editor/issues/5) | Real pseudo-terminal, ANSI parsing, SIGINT forwarding |
-| 4 | [Settings panel](https://github.com/Yan123-tech/code-editor/issues/4) | Move persisted preferences out of the Format menu into a discoverable surface |
+| 4 | [Settings panel](https://github.com/Yan123-tech/code-editor/issues/4) — done | Move persisted preferences out of the Format menu into a discoverable surface |
 | 14 | [Interface redesign](https://github.com/Yan123-tech/code-editor/issues/14) | Landed: native macOS chrome and a real design system |
 
 ## Quality gates
 
 - [x] Builds with no warnings
-- [x] `swift test` passes (108 tests on `feature/lsp-completion`; +5 `DocumentExternalChangeTests` on `feature/external-change-detection`; 1 local-only sourcekit E2E, see [docs/MEMORY.md](docs/MEMORY.md))
+- [x] `swift test` passes (115 tests: 114 unit + 1 local-only sourcekit E2E; see [docs/MEMORY.md](docs/MEMORY.md))
 - [x] `swift-format lint --strict` clean
 - [ ] CI builds the package — blocked, see [docs/MEMORY.md](docs/MEMORY.md#1-ci-cannot-build-this-package-do-not-try-to-make-it)
 - [x] Completion works for Swift — wired to `sourcekit-lsp`, end-to-end tested locally
 - [x] External file changes since open are guarded on save — [#6](https://github.com/Yan123-tech/code-editor/issues/6)
-- [ ] Diagnostics render
+- [x] Diagnostics render
 - [ ] No leaks in a 30-minute session
 - [x] Unsaved work is guarded on quit — [#18](https://github.com/Yan123-tech/code-editor/issues/18). Force-quit and crashes still lose buffers
 - [x] The redesign has been reviewed by someone who can see it — it found #15–#17, all since fixed

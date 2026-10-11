@@ -6,8 +6,8 @@ on `main` (748e7ef) and are each green on the local gate.
 
 ```
 swift build    → Build complete (1 pre-existing warning in EditorState.swift)
-swift test     → 113 tests in 31 suites (107 unit + 1 sourcekit end-to-end, local-only;
-                 5 `DocumentExternalChangeTests`); 78 in 18 suites on
+swift test     → 115 tests in 32 suites (114 unit + 1 sourcekit end-to-end, local-only;
+                 2 new `DocumentDiagnosticsTests`); 78 in 18 suites on
                  `feature/external-change-detection` (73 pre-existing + 5 new)
 swift-format lint --strict → 0 warnings
 ```
@@ -33,8 +33,9 @@ The window was rebuilt around native macOS chrome. The design tokens live in
 | **Toolbar** | Unified: breadcrumb principal, create menu and quick-open/terminal toggles trailing. The sidebar's hand-rolled header is gone. |
 | **Sidebar** | Click or arrow to a row to activate: files open, folders expand. The active document is revealed by expanding its ancestors, shown bold with an accent icon. Delete asks first. |
 | **Tabs** | 32pt strip, active tab filled with the canvas colour and rounded so it merges with the editor. Dirty dot beside the title; close button always present. |
-| **Status bar** | Caret, selection count, UTF-8, line ending, language, and a "Changed on disk" hint
-  while a save conflict is pending. The byte count is gone. |
+| **Status bar** | Caret, selection count, UTF-8, line ending, language, a live error/warning
+  count from LSP diagnostics, and a "Changed on disk" hint while a save conflict is
+  pending. The byte count is gone. |
 | **Empty state** | One, in the canvas. With a workspace open it points at the sidebar; without one it offers Open Folder as the single prominent action. |
 | **Find/replace** | ⌘F opens CodeEdit's own panel through `SourceEditorState.findPanelVisible`. |
 | **Quick open** | ⌘P over a bounded filesystem index. Matched characters are emphasised. |
@@ -72,13 +73,17 @@ lines, command history on ↑/↓, stdout and stderr colored separately.
 **Themes.** Dark, Light, High Contrast. Selection persists to `UserDefaults`, along with
 font size, tab width, word wrap, minimap, folding ribbon and invisibles.
 
+**Settings panel.** ⌘, opens a sheet (see [#4](https://github.com/Yan123-tech/code-editor/issues/4))
+consolidating theme, font size, tab width and the four view toggles in one Form — no new
+behaviour, just a discoverable surface for what was already in the Format menu.
+
 **Quit guard.** Quitting with modified documents prompts first. Save saves everything and
 abandons the quit if any save did not take — a cancelled panel keeps the work; Don't Save
 discards; Cancel stays.
 
-**Commands.** ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L. All wired; none are empty closures.
+**Commands.** ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L, ⌘,. All wired; none are empty closures.
 
-**Tests.** 113 swift-testing cases (107 unit + 1 sourcekit end-to-end, local-only).
+**Tests.** 115 swift-testing cases (113 unit + 2 new diagnostics, 1 sourcekit end-to-end, local-only).
 `FileSystemManager` and `QuickOpenIndex` are tested against in-memory providers, so no
 non-LSP test touches the real disk; the LSP transport and completion matching are covered by
 dedicated suites (see table below).
@@ -90,9 +95,12 @@ correlates responses by id, ACKs server-initiated requests and fails parked requ
 or time-out instead of hanging. `LSPClient` completes the `initialize` handshake against
 `sourcekit-lsp`, and `LSPTextViewCoordinator` drives open/didChange/close plus the fuzzy
 completion popup (Tab/Enter to accept, inline error on server crash or a malformed
-response). Verified end-to-end by `LSPClientEndToEndTests` (local-only; `sourcekit-lsp` is
-too heavy to run under CI, see [MEMORY.md #1](MEMORY.md)). Diagnostics, hover and
-go-to-definition are [#2](https://github.com/Yan123-tech/code-editor/issues/2)–[#3](https://github.com/Yan123-tech/code-editor/issues/3).
+response). Diagnostics, hover and go-to-definition are [#2](https://github.com/Yan123-tech/code-editor/issues/2)–[#3](https://github.com/Yan123-tech/code-editor/issues/3): diagnostics
+from `textDocument/publishDiagnostics` paint underlines coloured by severity (error/warning/
+information/hint) from `Theme.semantic`, a live error/warning count appears in the status bar,
+and ⌘-click resolves a definition via `JumpToDefinitionDelegate` with server hover
+documentation shown in the link popover. Verified for completion by `LSPClientEndToEndTests`
+(local-only; `sourcekit-lsp` is too heavy to run under CI, see [MEMORY.md #1](MEMORY.md)).
 
 Known limits of the LSP wiring:
 
@@ -103,6 +111,9 @@ Known limits of the LSP wiring:
 - Each `didOpen` on a `Package.swift` workspace triggers `swift build
   --experimental-prepare-for-indexing` inside sourcekit, which OOMs under `swift test`.
   Use a single-file document. [MEMORY.md #20](MEMORY.md#20-sourcekit-lsp-server-requests-use-string-ids-and-its-completion-must-be-static).
+- Diagnostics underlines are a solid coloured underline, not a wavy squiggle — the upstream
+  `GutterView` and `TextView` don't expose a squiggle attribute set in 0.15. Gutter markers
+  (the red/yellow dots in the scroll ruler) are a follow-up.
 
 **The terminal has no PTY.** Pipes, so no job control and no TTY. `vim` renders wrong,
 `top` exits immediately, Ctrl-C does not reliably interrupt. [#5](https://github.com/Yan123-tech/code-editor/issues/5).
@@ -145,6 +156,7 @@ one `AppState`, one document set and one sidebar. Multi-window needs per-window 
 | Document | 12 | line splitting, offset math, selection clamping, insert/delete, line endings, line ranges, selected lines |
 | Document persistence | 2 | save/reload round-trip, `noURL` |
 | Document external change | 5 | mtime guard, baseline resets on save, revert, untitled unguarded |
+| Document diagnostics | 2 | setDiagnostics round-trip, range-to-NSRange conversion |
 | DocumentManager | 3 | reuse, neighbour focus, dirty tracking |
 | TextSelectionManager | 4 | primary selection, joined text |
 | FileSystemManager | 10 | root validation, sort order, create, rename, expansion, cache keys, `reveal`, `clearError` |
@@ -177,18 +189,7 @@ this is a recommendation, not a commitment.
 
 The data-loss guard recommended here is done — [#18](https://github.com/Yan123-tech/code-editor/issues#18).
 
-### 1. #2 then #3 — diagnostics, hover, go-to-definition
-
-Follow #1 naturally: they share the transport and lifecycle that #1 proves. Doing them
-together means the `TextViewCoordinator` wiring is designed once.
-
-### 2. #4 — settings panel
-
-Smallest of the six. Minimap, folding ribbon, invisibles, wrap, tab width and font size are
-already toggles in the Format menu and already persisted; the panel is moving existing
-state into a discoverable surface, not new behaviour.
-
-### 3. #5 — PTY terminal
+### 1. #5 — PTY terminal
 
 Largest and least user-visible until done. `vim` and `top` are broken today, which makes it
 feel urgent, but it is C interop behind a protocol and nothing else depends on it.
@@ -216,13 +217,13 @@ as a placeholder branch — plan only, no code.
 
 | Module | Lines | Files |
 |---|---|---|
-| CodeEditorCore | 1565 | 9 |
+| CodeEditorCore | 1619 | 10 |
 | CodeEditorLSP | 1443 | 4 |
-| CodeEditorUI | 2285 | 13 |
-| CodeEditorApp | 562 | 3 |
-| CodeEditorThemes | 437 | 5 |
+| CodeEditorUI | 2424 | 15 |
+| CodeEditorApp | 592 | 3 |
+| CodeEditorThemes | 439 | 5 |
 | CodeEditorTerminal | 245 | 1 |
-| Tests | 1692 | 11 |
+| Tests | 1723 | 13 |
 
 LSP is the largest module after `CodeEditorUI` and was the least used — it is now wired in for
 completion (#1). That is deliberate for now — it is the interesting part — but with it live,

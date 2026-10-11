@@ -425,6 +425,24 @@ compile error ("cannot use mutating member on immutable value"), not a silent no
 
 ---
 
+## 23. `Picker` with `selection:` resolves to `init(sources:selection:...)` on this toolchain
+
+On Swift 6.4 / Xcode 26.4's SwiftUI, `Picker("Title", selection: binding, content:label:)`
+with a trailing `label:` closure resolves to the `init(sources:selection:content:label:)`
+overload instead. The compiler then complains that the first positional argument (the title
+`String`) does not conform to `RandomAccessCollection`, and the error is a generic-parameter
+inference failure that hides the real cause.
+
+Two workarounds that work:
+- Use `Menu` with `Button`s instead (what the settings panel does — it is simpler and gives the
+  same UX for a short fixed list).
+- Drop the trailing-`label:` form and use the older `Picker("Title", selection:binding, content:)`
+  where `content:` is a trailing closure.
+
+This is toolchain-specific and may resolve itself on a newer SDK; do not generalise the fix.
+
+---
+
 ## Quick reference
 
 | Question | Answer |
@@ -448,3 +466,5 @@ compile error ("cannot use mutating member on immutable value"), not a silent no
 | Why did highlighting fall back to plain text? | #19. The `Language` identifier must match `TreeSitterLanguage.rawValue`. |
 | Why are straight quotes not warned? | They are correct in code. #19. |
 | Why can't I silently overwrite a file changed on disk? | You can't. #6 throws `DocumentError.changedOnDisk` and the save dialog offers Reload / Save Anyway. |
+| How do I make a settings picker? | Don't use `Picker(selection:)`. See #23. Use `Menu` with `Button`s. |
+| Where do I add a diagnostic severity colour? | `Theme.semantic` — `.danger`, `.warning`, `.success`. Never a syntax token. |
