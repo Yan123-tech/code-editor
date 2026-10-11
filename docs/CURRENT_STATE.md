@@ -1,10 +1,14 @@
 # Current state
 
-Last verified against `feature/ui-redesign` on 2026-10-09, Swift 6.4, macOS 27.0.1.
+Last verified on 2026-10-10, Swift 6.4.0.34.1, macOS 27.0.1. The `feature/lsp-completion`
+and `feature/external-change-detection` branches have been merged into one working branch
+on `main` (748e7ef) and are each green on the local gate.
 
 ```
-swift build    → Build complete
-swift test     → 73 tests in 17 suites passed
+swift build    → Build complete (1 pre-existing warning in EditorState.swift)
+swift test     → 113 tests in 31 suites (107 unit + 1 sourcekit end-to-end, local-only;
+                 5 `DocumentExternalChangeTests`); 78 in 18 suites on
+                 `feature/external-change-detection` (73 pre-existing + 5 new)
 swift-format lint --strict → 0 warnings
 ```
 
@@ -29,7 +33,8 @@ The window was rebuilt around native macOS chrome. The design tokens live in
 | **Toolbar** | Unified: breadcrumb principal, create menu and quick-open/terminal toggles trailing. The sidebar's hand-rolled header is gone. |
 | **Sidebar** | Click or arrow to a row to activate: files open, folders expand. The active document is revealed by expanding its ancestors, shown bold with an accent icon. Delete asks first. |
 | **Tabs** | 32pt strip, active tab filled with the canvas colour and rounded so it merges with the editor. Dirty dot beside the title; close button always present. |
-| **Status bar** | Caret, selection count, UTF-8, line ending, language. The byte count is gone. |
+| **Status bar** | Caret, selection count, UTF-8, line ending, language, and a "Changed on disk" hint
+  while a save conflict is pending. The byte count is gone. |
 | **Empty state** | One, in the canvas. With a workspace open it points at the sidebar; without one it offers Open Folder as the single prominent action. |
 | **Find/replace** | ⌘F opens CodeEdit's own panel through `SourceEditorState.findPanelVisible`. |
 | **Quick open** | ⌘P over a bounded filesystem index. Matched characters are emphasised. |
@@ -49,7 +54,7 @@ file opened ([#15](https://github.com/Yan123-tech/code-editor/issues/15) — ups
 diff text on update), a selected folder's chevron did nothing
 ([#16](https://github.com/Yan123-tech/code-editor/issues/16)), and the gutter drew through the
 translucent tab strip while rubber-band scrolling
-([#17](https://github.com/Yan123-tech/code-editor/issues/17)). Tree-sitter highlighting across roughly 25 languages, line-number
+([#17](https://github.com/Yan123-tech/code-editor/issues/17)). Tree-sitter highlighting across 34 languages, line-number
 gutter, bracket-pair emphasis, indentation and reformat-at-column, word wrap, undo stack
 shared with the document model. Peripherals are configured explicitly: gutter on, minimap
 off by default with a toggle, folding ribbon and invisibles toggleable, smart quotes and
@@ -57,6 +62,9 @@ invisible spaces flagged as warnings.
 
 **Documents.** Tabs with dirty-state dots. Save, Save All, close with a save prompt.
 Untitled documents get a location prompt. Line endings detected on load, preserved on save.
+A file that changed on disk since it was opened is detected on save — `save()` throws
+`DocumentError.changedOnDisk` and the dialog offers Reload from Disk / Save Anyway / Cancel,
+with a "Changed on disk" hint in the status bar. [#6](https://github.com/Yan123-tech/code-editor/issues/6).
 
 **Terminal.** Runs `$SHELL -i` in a subprocess. Line-buffered scrollback capped at 2000
 lines, command history on ↑/↓, stdout and stderr colored separately.
@@ -70,22 +78,34 @@ discards; Cancel stays.
 
 **Commands.** ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L. All wired; none are empty closures.
 
-**Tests.** 73 swift-testing cases. `FileSystemManager` and `QuickOpenIndex` are tested
-against in-memory providers, so no test touches the real disk.
+**Tests.** 113 swift-testing cases (107 unit + 1 sourcekit end-to-end, local-only).
+`FileSystemManager` and `QuickOpenIndex` are tested against in-memory providers, so no
+non-LSP test touches the real disk; the LSP transport and completion matching are covered by
+dedicated suites (see table below).
 
 ## Not working
 
-**LSP is implemented but not connected.** `JSONRPCTransport` does real `Content-Length`
-framing, correlates responses by id, routes notifications, and fails parked requests rather
-than hanging when the server dies. `LSPClient` completes the initialize handshake against
-`sourcekit-lsp`. Nothing calls either one. Completion, diagnostics, hover and
-go-to-definition are [#1](https://github.com/Yan123-tech/code-editor/issues/1)–[#3](https://github.com/Yan123-tech/code-editor/issues/3).
+**LSP completion is wired.** `JSONRPCTransport` does real `Content-Length` framing,
+correlates responses by id, ACKs server-initiated requests and fails parked requests on crash
+or time-out instead of hanging. `LSPClient` completes the `initialize` handshake against
+`sourcekit-lsp`, and `LSPTextViewCoordinator` drives open/didChange/close plus the fuzzy
+completion popup (Tab/Enter to accept, inline error on server crash or a malformed
+response). Verified end-to-end by `LSPClientEndToEndTests` (local-only; `sourcekit-lsp` is
+too heavy to run under CI, see [MEMORY.md #1](MEMORY.md)). Diagnostics, hover and
+go-to-definition are [#2](https://github.com/Yan123-tech/code-editor/issues/2)–[#3](https://github.com/Yan123-tech/code-editor/issues/3).
+
+Known limits of the LSP wiring:
+
+- `Position` is UTF‑16 code units. The conversion is correct for ASCII but is not yet
+  exercised on multi-byte runs — see [MEMORY.md #21](MEMORY.md#21-position-is-utf-16-0-indexed-lsp-spec).
+- Document edits are synced as a full `didChange` on a 100ms debounce, not as ranges:
+  `SourceEditor` exposes ranges and the coordinator doesn't bridge them yet.
+- Each `didOpen` on a `Package.swift` workspace triggers `swift build
+  --experimental-prepare-for-indexing` inside sourcekit, which OOMs under `swift test`.
+  Use a single-file document. [MEMORY.md #20](MEMORY.md#20-sourcekit-lsp-server-requests-use-string-ids-and-its-completion-must-be-static).
 
 **The terminal has no PTY.** Pipes, so no job control and no TTY. `vim` renders wrong,
 `top` exits immediately, Ctrl-C does not reliably interrupt. [#5](https://github.com/Yan123-tech/code-editor/issues/5).
-
-**No external-change detection.** If a file changes on disk while open, the editor does not
-notice and will overwrite it. [#6](https://github.com/Yan123-tech/code-editor/issues/6).
 
 **The quick-open index is a snapshot, not a stream.** It is a filesystem walk refreshed when
 the workspace root changes. Files created afterwards are not findable until the next
@@ -124,6 +144,7 @@ one `AppState`, one document set and one sidebar. Multi-window needs per-window 
 | TextSelection | 2 | inverted ranges, NSRange |
 | Document | 12 | line splitting, offset math, selection clamping, insert/delete, line endings, line ranges, selected lines |
 | Document persistence | 2 | save/reload round-trip, `noURL` |
+| Document external change | 5 | mtime guard, baseline resets on save, revert, untitled unguarded |
 | DocumentManager | 3 | reuse, neighbour focus, dirty tracking |
 | TextSelectionManager | 4 | primary selection, joined text |
 | FileSystemManager | 10 | root validation, sort order, create, rename, expansion, cache keys, `reveal`, `clearError` |
@@ -136,9 +157,16 @@ one `AppState`, one document set and one sidebar. Multi-window needs per-window 
 | QuickOpenIndex | 4 | relative paths, skipped directories, ranking, empty query |
 | TerminalSession | 4 | history, failed connect, clear |
 | saveAllModified | 5 | nothing to do, saved, abandoned, mixed outcomes, only-modified visited |
+| JSONRPCTransport | 15 | framing, response/error routing (incl. string-id server requests), crash + time-out, `repairMalformedJSON` |
+| ServerCapabilities | 2 | object-form capabilities, minimal/bool fallback forms |
+| CompletionMatching | 8 | fuzzy filter, sortText ranking, `CompletionList` array/object/extra-field decode |
+| DocumentCompletion | 7 | `lspPosition`/`completionPrefix`, UTF-16 code units |
+| LSPClientEndToEnd | 1 | `sourcekit-lsp` connect/open/complete; local-only |
 
 Untested: the view layer in `CodeEditorUI` and `CodeEditorApp` beyond the pure logic
-extracted into `CodeEditorCore`, and the LSP transport.
+extracted into `CodeEditorCore`, and the live `LSPTextViewCoordinator` ↔ `SourceEditor`
+binding — there is no headless hook into upstream's suggestion window, so completion is
+verified by running the app. See [MEMORY.md #18](MEMORY.md#18-sourceeditor-never-diffs-its-text-on-update).
 
 ## Next
 
@@ -149,31 +177,18 @@ this is a recommendation, not a commitment.
 
 The data-loss guard recommended here is done — [#18](https://github.com/Yan123-tech/code-editor/issues#18).
 
-### 1. #1 — LSP completion
-
-The client already works; nothing calls it. `SourceEditor` takes a `completionDelegate`, so
-this is wiring rather than design — the least code for the most visible gain, and the
-project's stated purpose ([IDEA.md](IDEA.md)). The suggestion UI already exists upstream too;
-the same way ⌘F did not need building.
-
-### 2. #6 — external change detection
-
-A file changed on disk while open is silently overwritten. Also data loss, but narrower: it
-needs someone else editing the same file. A prompt on save when the modification date moved
-is enough to start; FSEvents is not required for correctness here.
-
-### 3. #2 then #3 — diagnostics, hover, go-to-definition
+### 1. #2 then #3 — diagnostics, hover, go-to-definition
 
 Follow #1 naturally: they share the transport and lifecycle that #1 proves. Doing them
 together means the `TextViewCoordinator` wiring is designed once.
 
-### 4. #4 — settings panel
+### 2. #4 — settings panel
 
 Smallest of the six. Minimap, folding ribbon, invisibles, wrap, tab width and font size are
 already toggles in the Format menu and already persisted; the panel is moving existing
 state into a discoverable surface, not new behaviour.
 
-### 5. #5 — PTY terminal
+### 3. #5 — PTY terminal
 
 Largest and least user-visible until done. `vim` and `top` are broken today, which makes it
 feel urgent, but it is C interop behind a protocol and nothing else depends on it.
@@ -201,14 +216,14 @@ as a placeholder branch — plan only, no code.
 
 | Module | Lines | Files |
 |---|---|---|
-| CodeEditorCore | 1478 | 8 |
-| CodeEditorLSP | 1143 | 3 |
-| CodeEditorUI | 1904 | 11 |
-| CodeEditorApp | 559 | 2 |
+| CodeEditorCore | 1565 | 9 |
+| CodeEditorLSP | 1443 | 4 |
+| CodeEditorUI | 2285 | 13 |
+| CodeEditorApp | 562 | 3 |
 | CodeEditorThemes | 437 | 5 |
 | CodeEditorTerminal | 245 | 1 |
-| Tests | 1074 | 6 |
+| Tests | 1692 | 11 |
 
-LSP is the largest module after `CodeEditorUI` and the least used. That is deliberate for
-now — it is the interesting part — but if the next three issues do not land, it becomes
-dead weight that should be deleted rather than kept aspirational.
+LSP is the largest module after `CodeEditorUI` and was the least used — it is now wired in for
+completion (#1). That is deliberate for now — it is the interesting part — but with it live,
+the transport and the coordinator are exercised by tests and by running the app.

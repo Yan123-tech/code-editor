@@ -354,6 +354,75 @@ that stopped working, and a gutter bleeding through the tab strip — after 68 p
 
 ---
 
+## 19. A `Language` identifier that does not match upstream is silence, not a warning
+
+`CodeEditorUI`'s `Language.codeLanguage` resolves highlighting through
+`CodeLanguage.detectLanguageFrom`, but `CodeLanguage.editorLanguage` resolves *back*
+from the editor's identifier by matching it against `TreeSitterLanguage.rawValue`.
+The reverse map is only used by the LSP layer (servers report a `languageId`, which we
+turn back into a `Language`), so a mismatched identifier is invisible to highlighting
+and only bites when the server talks back.
+
+`shell` ≠ `bash`, `plaintext` ≠ `plainText`, `csharp` ≠ `cSharp`. An identifier with
+no upstream grammar silently falls back to plain text — there is no error, the file just
+stops being highlighted correctly. `Language.allLanguages` is therefore the single
+ordered list, and every static must match a `TreeSitterLanguage` case one-to-one.
+
+Tree-sitter (via `CodeEditLanguages`) ships 42 `TreeSitterLanguage` cases; 8 are not
+exposed by this editor (jsdoc, markdownInline, regex, ocaml, agda, goMod, and the two
+that overlap). Do not add a static whose identifier has no upstream grammar.
+
+---
+
+## 20. `sourcekit-lsp` server requests use string ids, and its `completion` must be static
+
+`initialize` against `sourcekit-lsp` is followed by `client/registerCapability` requests
+**initiated by the server** with **string** ids (`"sk-0"`, `"sk-1"`). `RawMessage` therefore
+carries both `id: Int?` (for our outgoing requests) and `stringID: String?` (for server
+requests); the transport answers server requests with
+`sendResponse(requestID: JSONValue.null)`. Skip those ACKs and `initializeCompletion`/
+`documentSymbolProvider` registration stalls — the client reports `isReady = true` but every
+follow-on request then hangs until the timeout. This was the second, non-obvious completion
+blocker (the first was strict `ServerCapabilities` decoding).
+
+Two more sourcekit quirks to bake in (Xcode 16 toolchain, Swift 6.4.0.34.1):
+
+- With `completion.dynamicRegistration: true` the server registers completion dynamically
+  and then emits a ~212KB completion response that is **not valid JSON** — a `textEdit`
+  value that is a bare `{<docstring>}`, dangling `"markdown"` tokens, `sortText` carrying a
+  docstring. Advertise **static** completion (`dynamicRegistration: false`): the same
+  items come back as compact, strictly-valid JSON. `ClientCapabilities.default` sets this.
+- As a defensive net, `JSONRPCTransport.repairMalformedJSON` rewrites the single structurally
+  invalid shape `:"<...>"}"}` → `:null`. It only ever matches broken JSON, so well-formed
+  messages pass through untouched, and it is covered by
+  `JSONRPCTransportTests.repairBareStringObject`. It is a fallback, not the primary fix —
+  static capabilities keep the response valid in the first place.
+
+E2E: `LSPClientEndToEndTests` is gated on `sourceKitLSPPath` and is local-only (CI can't
+launch sourcekit-lsp, see #1). `sourcekit-lsp` is heavy and stalls/OOMs as a child of
+`swift test` on the ~200KB `Array`-member response, so the test completes against a tiny
+3-member local struct (~1KB response) and retries on a flaky spawn.
+
+## 21. `Position` is UTF-16, 0-indexed, LSP-spec
+
+`LSPClient` converts `Document` offsets to `Position(line:character:)` with UTF-16 code
+units and 0-based indices (LSP spec). Off-by-one here silently shifts every completion
+anchor, so the edit lands in the wrong place. `DocumentCompletionTests` pins the conversion
+for ASCII and for the UTF-16 boundary case.
+
+---
+
+## 22. `URL.resourceValues` is keyed `forKeys:`; `setResourceValues` is mutating
+
+`URL.resourceValues(for: [.contentModificationDateKey])` does not compile — the parameter is
+labelled `forKeys:`. The label-less subscript `url.resourceValues[.contentModificationDateKey]`
+reads the same way and is easy to confuse for it, which is how I wrote `for:` first.
+
+To fake a future mtime in `DocumentExternalChangeTests`, `URL.setResourceValues(_:)` is marked
+`mutating`, so it must be called on a `var` copy of the URL (`var target = url`); the
+filesystem write still goes through the underlying path. Calling it on a `let` parameter is a
+compile error ("cannot use mutating member on immutable value"), not a silent no-op.
+
 ---
 
 ## Quick reference
@@ -373,6 +442,9 @@ that stopped working, and a gutter bleeding through the tab strip — after 68 p
 | Why did the status bar say "1 line selected"? | #17. A caret is not a selection. |
 | Does `Scripts/build-app.sh` build? | Only since the fix in #16. Run it from clean to check. |
 | Why do all my tabs show the same file? | #18. `SourceEditor` does not diff text on update. |
-| What is not covered by `swift test`? | The editor binding. Open two files and switch. See #18. |
+| What is not covered by `swift test`? | The editor binding, the LSP transport, the LSP-to-view wiring. Open two files and switch tabs. See #18. |
 | Does quitting warn me? | Yes, since #18's fix. Force-quit does not, and nothing persists buffers. |
 | Where do I write "this does not work"? | Here, and [CURRENT_STATE.md](CURRENT_STATE.md). |
+| Why did highlighting fall back to plain text? | #19. The `Language` identifier must match `TreeSitterLanguage.rawValue`. |
+| Why are straight quotes not warned? | They are correct in code. #19. |
+| Why can't I silently overwrite a file changed on disk? | You can't. #6 throws `DocumentError.changedOnDisk` and the save dialog offers Reload / Save Anyway. |

@@ -16,11 +16,13 @@ an embedded shell in the same window.
   [CodeEditSourceEditor](https://github.com/CodeEditApp/CodeEditSourceEditor)) with
   tree-sitter syntax highlighting, line numbers, bracket-pair emphasis, indentation and
   reformat-on-type, word wrap, and a shared undo stack.
-- **Syntax highlighting** for ~25 languages including Swift, JS/TS, JSX/TSX, Python, JSON,
+- **Syntax highlighting** for 34 languages (every `TreeSitterLanguage` case `CodeEditLanguages` 0.1.20 exposes) including Swift, JS/TS, JSX/TSX, Python, JSON,
   HTML, CSS, Go, Rust, Java, Ruby, C/C++ and shell.
 - **Tabs** — open documents, dirty-state dots, close with a save prompt.
 - **Save / Save All**, with a location prompt for untitled documents. Line endings are
-  detected on load and preserved on save.
+  detected on load and preserved on save. A file that changed on disk since it was opened is
+  detected on save — the prompt offers Reload, Save Anyway, or Cancel rather than silently
+  overwriting it. [#6](https://github.com/Yan123-tech/code-editor/issues/6)
 - **Find and replace** — ⌘F, backed by the source editor's own panel.
 - **Quick open** — ⌘P, fuzzy-matching files across the workspace with the matched
   characters highlighted.
@@ -35,6 +37,9 @@ an embedded shell in the same window.
 - **Quit guard** — quitting with unsaved changes asks first. Choosing Save abandons the
   quit if anything failed to save, so a cancelled dialog never costs you the work.
 - **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L for theme.
+- **LSP completion** — `sourcekit-lsp` starts on a Swift document, the completion
+  popup is fuzzy‑filtered and accepts with Tab/Enter, and a server crash or malformed
+  response surfaces inline instead of hanging. [#1](https://github.com/Yan123-tech/code-editor/issues/1)
 
 ### Interface notes
 
@@ -124,7 +129,7 @@ add a `build` job and drop the caveat.
 | `CodeEditorCore` | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `SessionStore`, `Metrics`. No UI — Foundation only. |
 | `CodeEditorThemes` | `Theme`, `Chrome`, `Semantic`, `Typography`, `EditorColor`, `ThemeManager` with persisted selection. |
 | `CodeEditorTerminal` | `TerminalSession`: shell subprocess, line-buffered scrollback, history. |
-| `CodeEditorLSP` | `JSONRPCTransport` (Content-Length framing) and `LSPClient`. Not yet wired into the UI. |
+| `CodeEditorLSP` | `JSONRPCTransport` (Content-Length framing, response correlation, server-request ACK, crash/time-out handling), `LSPClient` (initialize handshake, document sync), completion types and fuzzy matching. Wired to the editor via `LSPTextViewCoordinator`. |
 | `CodeEditorUI` | SwiftUI views: editor, sidebar, tabs, status bar, empty state, quick open, terminal, plus `AppState`. |
 | `CodeEditorApp` | The `@main` App, menu commands, window layout, toolbar. |
 
@@ -169,14 +174,16 @@ See [AGENTS.md](AGENTS.md).
 
 ## Roadmap
 
-`CodeEditorLSP` has a working transport — real `Content-Length` framing, request/response
-correlating by id, notification routing — and a `sourcekit-lsp` descriptor that resolves
-Xcode's bundled binary. It is not connected to the editor yet.
+`CodeEditorLSP` is wired into the editor: `sourcekit-lsp` starts on a Swift document,
+the completion popup is fuzzy‑filtered, Tab/Enter accepts a suggestion, and a server
+crash or a response the decoder cannot parse surfaces an inline error instead of hanging.
+Diagnostics, hover and go-to-definition share the same transport and are
+[#2](https://github.com/Yan123-tech/code-editor/issues/2)–[#3](https://github.com/Yan123-tech/code-editor/issues/3).
 
-1. [Completion popup](https://github.com/Yan123-tech/code-editor/issues/1)
+1. [Completion popup](https://github.com/Yan123-tech/code-editor/issues/1) — wired
 2. [Diagnostics overlay](https://github.com/Yan123-tech/code-editor/issues/2)
 3. [Hover and go-to-definition](https://github.com/Yan123-tech/code-editor/issues/3)
-4. [External change detection](https://github.com/Yan123-tech/code-editor/issues/6)
+4. [External change detection](https://github.com/Yan123-tech/code-editor/issues/6) — done
 5. [PTY terminal](https://github.com/Yan123-tech/code-editor/issues/5)
 6. [Settings panel](https://github.com/Yan123-tech/code-editor/issues/4)
 
