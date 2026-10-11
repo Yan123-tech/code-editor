@@ -19,6 +19,7 @@ public final class AppState {
     public var isSidebarVisible = true
     public var isTerminalVisible = false
     public var isStatusBarVisible = true
+    public var isSettingsVisible = false
 
     public var errorMessage: String?
 
