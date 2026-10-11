@@ -7,7 +7,7 @@ import SwiftUI
 ///
 /// The canvas and syntax fields feed `EditorTheme` through the bridge in
 /// `CodeEditorUI`; the `chrome` and `semantic` groups feed the window chrome.
-public struct Theme: Sendable, Equatable {
+public struct Theme: Sendable, Equatable, Hashable {
     public var background: EditorColor
     public var text: EditorColor
     public var secondaryText: EditorColor

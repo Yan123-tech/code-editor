@@ -165,6 +165,14 @@ struct CodeEditorApp: App {
             }
             .keyboardShortcut("l", modifiers: [.command, .shift])
         }
+
+        // MARK: Settings
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                appState.isSettingsVisible = true
+            }
+            .keyboardShortcut(",", modifiers: [.command])
+        }
     }
 
     private func presentOpenFilePanel() {

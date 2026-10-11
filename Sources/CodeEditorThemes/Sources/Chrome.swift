@@ -14,7 +14,7 @@ import SwiftUI
 /// fills — the tokens then act as fallbacks and as the source for derived states
 /// such as hover washes. High Contrast sets the flag to false and uses the fills
 /// directly, because translucency trades contrast for depth.
-public struct Chrome: Sendable, Equatable {
+public struct Chrome: Sendable, Equatable, Hashable {
     /// The one saturated color the app may use for selection, focus and links.
     public var accent: EditorColor
 
@@ -79,7 +79,7 @@ public struct Chrome: Sendable, Equatable {
 
 /// Status colors that mean the same thing everywhere they appear: connection state,
 /// terminal errors, and later diagnostics.
-public struct Semantic: Sendable, Equatable {
+public struct Semantic: Sendable, Equatable, Hashable {
     public var danger: EditorColor
     public var success: EditorColor
     public var warning: EditorColor

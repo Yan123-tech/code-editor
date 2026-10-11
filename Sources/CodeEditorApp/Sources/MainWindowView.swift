@@ -61,6 +61,10 @@ struct MainWindowView: View {
                 quickOpenOverlay
             }
         }
+        .sheet(isPresented: settingsBinding) {
+            SettingsView(appState: appState)
+                .frame(minWidth: 420, minHeight: 480)
+        }
         .onChange(of: appState.quickOpenQuery) { _, _ in
             appState.updateQuickOpenResults()
         }
@@ -313,6 +317,14 @@ struct MainWindowView: View {
         Binding(
             get: { appState.pendingExternalChange != nil },
             set: { if !$0 { appState.pendingExternalChange = nil } }
+        )
+    }
+
+    /// Settings-panel visibility, driven by AppState and dismissed by the Done button.
+    private var settingsBinding: Binding<Bool> {
+        Binding(
+            get: { appState.isSettingsVisible },
+            set: { appState.isSettingsVisible = $0 }
         )
     }
 }
