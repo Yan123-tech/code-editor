@@ -100,6 +100,10 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     private var didOpen = false
     private var currentURI: String?
 
+    /// Diagnostics currently underlined in the active text view, so they can be cleared
+    /// before applying a new batch without touching ranges the server didn't mention.
+    private var renderedDiagnostics: [DocumentDiagnostic] = []
+
     /// Items from the most recent successful completion request, for prefix re-filtering
     /// on cursor move without another round-trip.
     private var lastCompletionItems: [CompletionItem]?
@@ -126,6 +130,7 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
 
     func destroy() {
         controller = nil
+        clearDiagnosticUnderlines()
     }
 
     // MARK: - Tab / workspace switch
@@ -147,13 +152,17 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         lastCompletionItems = nil
         crashShown = false
         currentURI = nil
+        clearDiagnosticUnderlines()
         await openIfNeeded()
+        // If this document had diagnostics from a previous visit, re-render them.
+        renderDiagnosticUnderlines(document.diagnostics)
     }
 
     // MARK: - Document sync
 
     /// `didOpen` on first appearance, for on-disk documents only (untitled docs have no
-    /// URI; sourcekit-lsp can't anchor a position to them).
+    /// URI; sourcekit-lsp can't anchor a position to them). Also subscribes to diagnostics
+    /// for this document's URI.
     private func openIfNeeded() async {
         guard !didOpen, let url = document.url else { return }
         let uri = url.absoluteString
@@ -163,6 +172,17 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         currentURI = uri
         await client.openDocument(uri: uri, languageId: document.language.identifier, content: document.content)
         didOpen = true
+
+        // Diagnostics for this URI are stored in the shared client, but the callback is
+        // single — so it always points at whichever document opened most recently. The
+        // active document is the common case; switching tabs re-renders from the stored
+        // `document.diagnostics`.
+        client.onDiagnosticsChanged = { [weak self] serverURI, serverDiagnostics in
+            guard let self, serverURI == currentURI else { return }
+            let converted = self.convertDiagnostics(serverDiagnostics)
+            self.document.setDiagnostics(converted)
+            self.renderDiagnosticUnderlines(converted)
+        }
     }
 
     /// Forward a keystroke to the server, debounced so a fast typist sends one
@@ -279,6 +299,81 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     func completionWindowDidClose() {
         lastCompletionItems = nil
         crashShown = false
+    }
+
+    // MARK: - Diagnostics
+
+    /// Convert LSP `Diagnostic`s to the Core model. Uses UTF-8 offsets via
+    /// `Document.offset(forLine:column:)` — correct for ASCII source (the common case
+    /// for Swift), matching the same assumption as completion positions.
+    private func convertDiagnostics(_ diagnostics: [Diagnostic]) -> [DocumentDiagnostic] {
+        diagnostics.compactMap { diag in
+            guard
+                let start = document.offset(
+                    forLine: diag.range.start.line, column: diag.range.start.character),
+                let end = document.offset(
+                    forLine: diag.range.end.line, column: diag.range.end.character)
+            else { return nil }
+            let severity: DocumentDiagnosticSeverity
+            switch diag.severity {
+            case .error: severity = .error
+            case .warning: severity = .warning
+            case .information: severity = .information
+            case .hint: severity = .hint
+            case .none: severity = .information
+            }
+            return DocumentDiagnostic(
+                range: TextSelection(start: start, end: end),
+                severity: severity,
+                message: diag.message
+            )
+        }
+    }
+
+    /// Remove previously-rendered diagnostic underlines and paint the new set.
+    /// Uses `.underlineStyle` + `.underlineColor` attributes on the text storage.
+    /// Wavy squiggles are drawn by the upstream gutter/renderer; a solid colored
+    /// underline is the MVP stand-in for the familiar compiler-error look.
+    /// Gutter markers are a follow-up — the upstream `GutterView` has no marker API in 0.15.
+    private func renderDiagnosticUnderlines(_ diagnostics: [DocumentDiagnostic]) {
+        clearDiagnosticUnderlines()
+
+        guard let storage = controller?.textView.textStorage else {
+            renderedDiagnostics = diagnostics
+            return
+        }
+
+        for diag in diagnostics {
+            guard let range = document.nsRange(from: diag.range.start, to: diag.range.end) else { continue }
+            let color = diagnosticColor(diag.severity)
+            storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            storage.addAttribute(.underlineColor, value: color, range: range)
+        }
+        renderedDiagnostics = diagnostics
+    }
+
+    /// Revert the text storage to its un-underlined state for the last rendered set.
+    private func clearDiagnosticUnderlines() {
+        guard let storage = controller?.textView.textStorage else { return }
+
+        for diag in renderedDiagnostics {
+            if let range = document.nsRange(from: diag.range.start, to: diag.range.end) {
+                storage.removeAttribute(.underlineStyle, range: range)
+                storage.removeAttribute(.underlineColor, range: range)
+            }
+        }
+        renderedDiagnostics.removeAll()
+    }
+
+    /// The color for a diagnostic severity, drawn from `Theme.semantic` so the palette
+    /// determines meaning (red = error, yellow = warning, green = info).
+    private func diagnosticColor(_ severity: DocumentDiagnosticSeverity) -> NSColor {
+        switch severity {
+        case .error: return theme.semantic.danger.nsColor
+        case .warning: return theme.semantic.warning.nsColor
+        case .information: return theme.semantic.success.nsColor
+        case .hint: return theme.secondaryText.nsColor
+        }
     }
 
     // MARK: - Helpers
