@@ -162,6 +162,11 @@ public final class Document: Identifiable {
     /// silently overwrite an external change. `nil` for untitled documents.
     public private(set) var fileModificationDate: Date?
 
+    /// Diagnostics published by a language server for this document, keyed by content
+    /// range. Empty when the server has nothing to report. `@Observable` so the status bar
+    /// re-renders the count automatically.
+    public private(set) var diagnostics: [DocumentDiagnostic] = []
+
     /// The primary selection.
     public private(set) var selection: TextSelection = TextSelection()
 
@@ -316,6 +321,14 @@ public final class Document: Identifiable {
         undoManager?.registerUndo(withTarget: self) { document in
             document.apply(previousContent)
         }
+    }
+
+    // MARK: - Diagnostics
+
+    /// Replace the diagnostics for this document. Called by `LSPTextViewCoordinator`
+    /// whenever the server publishes a fresh batch.
+    public func setDiagnostics(_ diagnostics: [DocumentDiagnostic]) {
+        self.diagnostics = diagnostics
     }
 
     // MARK: - Offset math

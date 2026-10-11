@@ -36,6 +36,11 @@ public struct StatusBarView: View {
                     separator
                     item("⚠️ Changed on disk")
                 }
+
+                if !document.diagnostics.isEmpty {
+                    separator
+                    diagnosticSummary(for: document)
+                }
             } else {
                 Spacer(minLength: 0)
             }
@@ -71,6 +76,18 @@ public struct StatusBarView: View {
 
     private func item(_ label: String) -> some View {
         Text(label)
+            .padding(.vertical, 2)
+            .fixedSize()
+    }
+
+    /// A compact error/warning count, coloured by the worst severity present.
+    @ViewBuilder
+    private func diagnosticSummary(for document: CodeEditorCore.Document) -> some View {
+        let errors = document.diagnostics.filter { $0.severity == .error }.count
+        let warnings = document.diagnostics.filter { $0.severity == .warning }.count
+        let color: Color = errors > 0 ? appState.theme.semantic.danger.color : appState.theme.semantic.warning.color
+        Text("\(errors) error\(errors == 1 ? "" : "s"), \(warnings) warning\(warnings == 1 ? "" : "s")")
+            .foregroundStyle(color)
             .padding(.vertical, 2)
             .fixedSize()
     }
