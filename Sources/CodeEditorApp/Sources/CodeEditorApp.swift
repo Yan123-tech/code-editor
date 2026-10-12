@@ -107,6 +107,20 @@ struct CodeEditorApp: App {
 
         // MARK: Format
         CommandGroup(replacing: .textFormatting) {
+            Button("Format Document") {
+                appState.formatActiveDocument()
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .disabled(appState.documentManager.activeDocument == nil)
+
+            Toggle(
+                "Format on Save",
+                isOn: Binding(
+                    get: { appState.editorState.formatOnSave },
+                    set: { appState.editorState.formatOnSave = $0 }
+                ))
+
+            Divider()
             Toggle(
                 "Word Wrap",
                 isOn: Binding(
@@ -150,6 +164,21 @@ struct CodeEditorApp: App {
                     }
                 }
             }
+        }
+
+        // MARK: Product
+        CommandMenu("Product") {
+            Button("Run") {
+                appState.runProject()
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(appState.fileSystemManager.rootURL == nil)
+
+            Button("Test") {
+                appState.testProject()
+            }
+            .keyboardShortcut("u", modifiers: .command)
+            .disabled(appState.fileSystemManager.rootURL == nil)
         }
 
         // MARK: Theme

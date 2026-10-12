@@ -125,6 +125,7 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
+        installMouseMonitor()
         Task {
             await openIfNeeded()
             renderDiagnosticUnderlines(document.diagnostics)
@@ -132,8 +133,13 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     }
 
     func destroy() {
+        removeMouseMonitor()
         controller = nil
         clearDiagnosticUnderlines()
+    }
+
+    func controllerDidDisappear(controller: TextViewController) {
+        closeDiagnosticPopover()
     }
 
     // MARK: - Tab / workspace switch
@@ -143,6 +149,7 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     func switchTo(document: CodeEditorCore.Document) async {
         guard self.document !== document else { return }
 
+        closeDiagnosticPopover()
         if let uri = currentURI,
             let client = await appState?.languageServer(for: document.language.identifier),
             client.isReady
@@ -209,6 +216,7 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     /// Forward a keystroke to the server, debounced so a fast typist sends one
     /// `didChange` per burst instead of one per character.
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
+        closeDiagnosticPopover()
         guard controller != nil else { return }
         didChangeTask?.cancel()
         didChangeTask = Task {
@@ -428,44 +436,214 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
             return DocumentDiagnostic(
                 range: TextSelection(start: start, end: end),
                 severity: severity,
-                message: diag.message
+                message: diag.message,
+                source: diag.source
             )
         }
     }
 
-    /// Remove previously-rendered diagnostic underlines and paint the new set.
-    /// Uses `.underlineStyle` + `.underlineColor` attributes on the text storage.
-    /// Wavy squiggles are drawn by the upstream gutter/renderer; a solid colored
-    /// underline is the MVP stand-in for the familiar compiler-error look.
-    /// Gutter markers are a follow-up — the upstream `GutterView` has no marker API in 0.15.
-    private func renderDiagnosticUnderlines(_ diagnostics: [DocumentDiagnostic]) {
-        clearDiagnosticUnderlines()
+    // MARK: - Diagnostic Underlines (EmphasisManager)
 
-        guard let storage = controller?.textView.textStorage else {
+    static let diagnosticEmphasisGroupId = "lspDiagnostics"
+
+    private func renderDiagnosticUnderlines(_ diagnostics: [DocumentDiagnostic]) {
+        guard let tv = controller?.textView else {
             renderedDiagnostics = diagnostics
             return
         }
 
+        guard let emphasisManager = tv.emphasisManager else {
+            renderedDiagnostics = diagnostics
+            return
+        }
+
+        let docLength = (tv.string as NSString).length
+        guard docLength > 0 else {
+            emphasisManager.removeEmphases(for: Self.diagnosticEmphasisGroupId)
+            renderedDiagnostics = []
+            return
+        }
+
+        let nsString = tv.string as NSString
+        var emphases: [Emphasis] = []
+
         for diag in diagnostics {
             guard let range = document.nsRange(from: diag.range.start, to: diag.range.end) else { continue }
+            guard range.location < docLength else { continue }
+
+            var effectiveRange = range
+            if effectiveRange.length == 0 {
+                effectiveRange = expandedTokenRange(at: effectiveRange.location, in: nsString, docLength: docLength)
+            } else if effectiveRange.location + effectiveRange.length > docLength {
+                effectiveRange.length = docLength - effectiveRange.location
+            }
+
+            guard effectiveRange.length > 0 else { continue }
+
             let color = diagnosticColor(diag.severity)
-            storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-            storage.addAttribute(.underlineColor, value: color, range: range)
+            emphases.append(Emphasis(range: effectiveRange, style: .underline(color: color)))
         }
+
+        emphasisManager.replaceEmphases(emphases, for: Self.diagnosticEmphasisGroupId)
         renderedDiagnostics = diagnostics
     }
 
-    /// Revert the text storage to its un-underlined state for the last rendered set.
     private func clearDiagnosticUnderlines() {
-        guard let storage = controller?.textView.textStorage else { return }
+        guard let tv = controller?.textView else { return }
+        tv.emphasisManager?.removeEmphases(for: Self.diagnosticEmphasisGroupId)
+        renderedDiagnostics.removeAll()
+    }
 
-        for diag in renderedDiagnostics {
-            if let range = document.nsRange(from: diag.range.start, to: diag.range.end) {
-                storage.removeAttribute(.underlineStyle, range: range)
-                storage.removeAttribute(.underlineColor, range: range)
+    private func expandedTokenRange(at location: Int, in string: NSString, docLength: Int) -> NSRange {
+        guard location < docLength else {
+            return NSRange(location: max(0, docLength - 1), length: min(1, docLength))
+        }
+        let underscore: UInt16 = 95
+        func isIdentChar(_ code: UInt16) -> Bool {
+            if code == underscore { return true }
+            guard let scalar = UnicodeScalar(code) else { return false }
+            return CharacterSet.alphanumerics.contains(scalar)
+        }
+        let char = string.character(at: location)
+        if !isIdentChar(char) {
+            return NSRange(location: location, length: 1)
+        }
+        var start = location
+        while start > 0 {
+            let prev = string.character(at: start - 1)
+            if isIdentChar(prev) {
+                start -= 1
+            } else {
+                break
             }
         }
-        renderedDiagnostics.removeAll()
+        var end = location
+        while end < docLength {
+            let next = string.character(at: end)
+            if isIdentChar(next) {
+                end += 1
+            } else {
+                break
+            }
+        }
+        return NSRange(location: start, length: max(1, end - start))
+    }
+
+    // MARK: - Diagnostic Mouse Hover Popover
+
+    private var mouseMonitor: Any?
+    private var activePopover: NSPopover?
+    private var hoveredDiagnosticRange: NSRange?
+
+    private func installMouseMonitor() {
+        guard mouseMonitor == nil else { return }
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+            self?.handleMouseMoved(event)
+            return event
+        }
+    }
+
+    private func removeMouseMonitor() {
+        if let monitor = mouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseMonitor = nil
+        }
+        closeDiagnosticPopover()
+    }
+
+    private func handleMouseMoved(_ event: NSEvent) {
+        guard let controller, let tv = controller.textView else { return }
+        guard let window = tv.window, event.window === window else {
+            closeDiagnosticPopover()
+            return
+        }
+
+        let windowPoint = event.locationInWindow
+        let viewPoint = tv.convert(windowPoint, from: nil)
+        guard tv.bounds.contains(viewPoint) else {
+            closeDiagnosticPopover()
+            return
+        }
+
+        let stringLength = (tv.string as NSString).length
+        guard stringLength > 0 else {
+            closeDiagnosticPopover()
+            return
+        }
+
+        guard let offset = tv.layoutManager.textOffsetAtPoint(viewPoint),
+              offset < stringLength
+        else {
+            closeDiagnosticPopover()
+            return
+        }
+
+        let matchingDiagnostics = document.diagnostics.filter { diag in
+            guard let range = document.nsRange(from: diag.range.start, to: diag.range.end) else { return false }
+            if range.contains(offset) || (range.length == 0 && range.location == offset) {
+                return true
+            }
+            if let diagLine = document.lineAndColumn(for: range.location)?.line,
+               let currentLine = document.lineAndColumn(for: offset)?.line,
+               diagLine == currentLine {
+                return true
+            }
+            return false
+        }
+
+        guard !matchingDiagnostics.isEmpty else {
+            closeDiagnosticPopover()
+            return
+        }
+
+        guard let firstDiag = matchingDiagnostics.first,
+              let anchorRange = document.nsRange(from: firstDiag.range.start, to: firstDiag.range.end)
+        else {
+            closeDiagnosticPopover()
+            return
+        }
+
+        if hoveredDiagnosticRange == anchorRange && activePopover?.isShown == true {
+            return
+        }
+
+        showDiagnosticPopover(for: matchingDiagnostics, anchorRange: anchorRange, at: viewPoint, in: tv)
+    }
+
+    private func showDiagnosticPopover(
+        for diagnostics: [DocumentDiagnostic],
+        anchorRange: NSRange,
+        at point: CGPoint,
+        in tv: TextView
+    ) {
+        closeDiagnosticPopover()
+
+        hoveredDiagnosticRange = anchorRange
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = true
+        let popoverView = DiagnosticPopoverView(diagnostics: diagnostics, theme: theme)
+        let hostingController = NSHostingController(rootView: popoverView)
+        popover.contentViewController = hostingController
+
+        let anchorRect: NSRect
+        if let rect = tv.layoutManager.rectsFor(range: anchorRange).first {
+            anchorRect = rect
+        } else {
+            anchorRect = NSRect(x: point.x, y: point.y, width: 1, height: 1)
+        }
+
+        popover.show(relativeTo: anchorRect, of: tv, preferredEdge: .maxY)
+        self.activePopover = popover
+    }
+
+    private func closeDiagnosticPopover() {
+        if let popover = activePopover {
+            popover.close()
+            activePopover = nil
+        }
+        hoveredDiagnosticRange = nil
     }
 
     /// The color for a diagnostic severity, drawn from `Theme.semantic` so the palette

@@ -499,6 +499,41 @@ does not clip view boundaries by default, and later views draw on top of earlier
 
 ---
 
+## 28. LSP `Position` and `NSRange` are UTF-16 code units, not UTF-8 byte offsets
+
+`Document.swift` previously mapped lines and columns via `String.utf8`. The LSP specification
+strictly defines `Position.character` as UTF-16 code units from the start of the line, and Cocoa
+`NSString`/`NSRange` and `CodeEditTextView` offsets are also UTF-16 code units. Using UTF-8 byte
+slices drifted whenever code contained non-ASCII characters, multi-byte runes, or tabs, leading
+to misaligned diagnostic underlines and incorrect caret offsets. All offset and range mapping in
+`Document.swift` and `CodeEditorView.swift` now calculates using `.utf16.count`. In addition,
+zero-length diagnostics are token-expanded via identifier boundary scans so entire tokens are
+underlined instead of single-character ticks.
+
+---
+
+## 29. Default session restoration cycles files on launch; prefer Welcome Hub with Recent Projects
+
+Restoring all open files and active documents simultaneously on launch triggered rapid `activate()`
+cycles and visual flickers when tabs with identical or similar names reloaded before the workspace
+finished initializing. Launching with `restoreSession = false` cleanly lands the user on the
+`EmptyStateView` Welcome Hub. The Welcome Hub persists and displays an MRU `RecentProjectsStore` with
+one-click folder opening, middle-truncated path display, Finder reveal, and quick action buttons.
+
+---
+
+## 30. Go development support requires environment PATH augmentation for GUI subprocesses
+
+Subprocesses spawned from macOS GUI application bundles (`.app`) run with a minimal system `PATH`
+(`/usr/bin:/bin:/usr/sbin:/sbin`), omitting `/usr/local/go/bin`, `/opt/homebrew/bin`, and `~/go/bin`.
+Both `JSONRPCTransport` (for `gopls`) and `TerminalSession` (for `go run` and `go test`) must
+explicitly inject these Go search paths into `process.environment["PATH"]`. In addition, `gopls`
+must be initialized with `staticcheck: true`, analyses, and unimported completions enabled, and
+`GoFormatter` invokes `gofmt` safely over standard input/output with non-destructive fallback if
+syntax errors exist.
+
+---
+
 ## Quick reference
 
 | Question | Answer |

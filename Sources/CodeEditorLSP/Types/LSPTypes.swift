@@ -433,22 +433,62 @@ public struct ServerCapabilities: Decodable, Sendable {
 
 // MARK: - Requests
 
+public struct GoplsInitializationOptions: Codable, Equatable, Sendable {
+    public var staticcheck: Bool
+    public var completeUnimported: Bool
+    public var deepCompletion: Bool
+    public var analyses: [String: Bool]
+
+    public init(
+        staticcheck: Bool = true,
+        completeUnimported: Bool = true,
+        deepCompletion: Bool = true,
+        analyses: [String: Bool] = [
+            "unusedparams": true,
+            "shadow": true,
+            "nilness": true,
+            "fieldalignment": false
+        ]
+    ) {
+        self.staticcheck = staticcheck
+        self.completeUnimported = completeUnimported
+        self.deepCompletion = deepCompletion
+        self.analyses = analyses
+    }
+}
+
 public struct InitializeParams: Encodable, Sendable {
     public var processId: Int?
     public var rootURI: String?
     public var capabilities: ClientCapabilities
     public var workspaceFolders: [WorkspaceFolder]?
+    public var initializationOptions: GoplsInitializationOptions?
 
     public init(
         processId: Int? = Int(ProcessInfo.processInfo.processIdentifier),
         rootURI: String? = nil,
         capabilities: ClientCapabilities = .default,
-        workspaceFolders: [WorkspaceFolder]? = nil
+        workspaceFolders: [WorkspaceFolder]? = nil,
+        initializationOptions: GoplsInitializationOptions? = nil
     ) {
         self.processId = processId
         self.rootURI = rootURI
         self.capabilities = capabilities
         self.workspaceFolders = workspaceFolders
+        self.initializationOptions = initializationOptions
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case processId, rootURI, capabilities, workspaceFolders, initializationOptions
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(processId, forKey: .processId)
+        try container.encodeIfPresent(rootURI, forKey: .rootURI)
+        try container.encode(capabilities, forKey: .capabilities)
+        try container.encodeIfPresent(workspaceFolders, forKey: .workspaceFolders)
+        try container.encodeIfPresent(initializationOptions, forKey: .initializationOptions)
     }
 }
 

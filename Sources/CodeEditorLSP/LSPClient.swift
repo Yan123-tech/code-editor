@@ -7,12 +7,20 @@ public struct LanguageServerDescriptor: Sendable, Equatable {
     public let command: [String]
     /// Language identifiers this server handles, matching `Language.identifier`.
     public let languageIdentifiers: Set<String>
+    public let initializationOptions: GoplsInitializationOptions?
 
-    public init(id: String, displayName: String, command: [String], languageIdentifiers: Set<String>) {
+    public init(
+        id: String,
+        displayName: String,
+        command: [String],
+        languageIdentifiers: Set<String>,
+        initializationOptions: GoplsInitializationOptions? = nil
+    ) {
         self.id = id
         self.displayName = displayName
         self.command = command
         self.languageIdentifiers = languageIdentifiers
+        self.initializationOptions = initializationOptions
     }
 }
 
@@ -28,6 +36,18 @@ public enum LanguageServerRegistry {
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
+    /// Path to `gopls`, if installed.
+    public static var goplsPath: String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = [
+            "\(home)/go/bin/gopls",
+            "/usr/local/go/bin/gopls",
+            "/opt/homebrew/bin/gopls",
+            "/usr/local/bin/gopls",
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
     public static func descriptor(for language: String) -> LanguageServerDescriptor? {
         switch language {
         case "swift":
@@ -38,13 +58,22 @@ public enum LanguageServerRegistry {
                 command: [path],
                 languageIdentifiers: ["swift"]
             )
+        case "go":
+            guard let path = goplsPath else { return nil }
+            return LanguageServerDescriptor(
+                id: "gopls",
+                displayName: "gopls",
+                command: [path, "serve"],
+                languageIdentifiers: ["go"],
+                initializationOptions: GoplsInitializationOptions()
+            )
         default:
             return nil
         }
     }
 
     public static var allDescriptors: [LanguageServerDescriptor] {
-        ["swift"].compactMap { descriptor(for: $0) }
+        ["swift", "go"].compactMap { descriptor(for: $0) }
     }
 }
 
@@ -113,7 +142,8 @@ public final class LSPClient {
                     capabilities: .default,
                     workspaceFolders: rootURL.map {
                         [WorkspaceFolder(uri: $0.absoluteString, name: $0.lastPathComponent)]
-                    }
+                    },
+                    initializationOptions: descriptor.initializationOptions
                 ),
                 as: InitializeResult.self
             )

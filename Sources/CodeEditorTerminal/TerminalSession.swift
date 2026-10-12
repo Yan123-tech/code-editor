@@ -79,6 +79,18 @@ public final class TerminalSession {
         }
 
         var environment = ProcessInfo.processInfo.environment
+        let currentPath = environment["PATH"] ?? ""
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let extraPaths = [
+            "\(home)/go/bin",
+            "/usr/local/go/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin"
+        ]
+        let newPath = (extraPaths + [currentPath]).filter { !$0.isEmpty }.joined(separator: ":")
+        environment["PATH"] = newPath
         for (key, value) in self.environment {
             environment[key] = value
         }
