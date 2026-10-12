@@ -193,13 +193,16 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         // Diagnostics for this URI are stored in the shared client, but the callback is
         // single — so it always points at whichever document opened most recently. The
         // active document is the common case; switching tabs re-renders from the stored
-        // `document.diagnostics`.
+        // `document.diagnostics`. Dispatched to MainActor since UI underlines and Document
+        // mutations require main thread execution.
         client.onDiagnosticsChanged = { [weak self] serverURI, serverDiagnostics in
-            guard let self else { return }
-            guard self.matchesCurrentURI(serverURI) else { return }
-            let converted = self.convertDiagnostics(serverDiagnostics)
-            self.document.setDiagnostics(converted)
-            self.renderDiagnosticUnderlines(converted)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard self.matchesCurrentURI(serverURI) else { return }
+                let converted = self.convertDiagnostics(serverDiagnostics)
+                self.document.setDiagnostics(converted)
+                self.renderDiagnosticUnderlines(converted)
+            }
         }
 
         // Render any cached diagnostics the client or document already has
@@ -220,9 +223,11 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         guard controller != nil else { return }
         didChangeTask?.cancel()
         didChangeTask = Task {
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            await openIfNeeded()
             guard !Task.isCancelled,
-                let uri = self.currentURI,
+                let uri = self.currentURI ?? self.document.url?.absoluteString,
                 let client = await self.appState?.languageServer(for: self.document.language.identifier),
                 client.isReady
             else { return }
@@ -232,7 +237,9 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
 
     // MARK: - CodeSuggestionDelegate
 
-    func completionTriggerCharacters() -> Set<String> { ["."] }
+    func completionTriggerCharacters() -> Set<String> {
+        [".", ":", "/", "@", "$", "_"]
+    }
 
     /// Fetch completions at the caret, rank them, and present. A stale in-flight request
     /// is cancelled first so only the latest trigger wins.
@@ -244,14 +251,12 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         let generation = completionGeneration
         didChangeTask?.cancel()
 
-        // Only on-disk Swift documents have a server; anything else stays quiet.
         guard LanguageServerRegistry.descriptor(for: document.language.identifier) != nil else { return nil }
         guard let uri = document.url?.absoluteString else { return nil }
         guard let client = await appState?.languageServer(for: document.language.identifier),
             client.isReady
         else {
-            // `languageServer(for:)` already set `errorMessage` to a user-facing reason.
-            let reason = appState?.errorMessage ?? "SourceKit-LSP could not start."
+            let reason = appState?.errorMessage ?? "Language server could not start."
             return (cursorPosition, [LSPCompletionItem(error: reason)])
         }
 
@@ -268,13 +273,15 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
             self.crashShown = false
             let query = document.completionPrefix(at: caret)
             let ranked = rankedCompletions(items, query: query).map(LSPCompletionItem.init)
-            return (cursorPosition, ranked)
+            guard !ranked.isEmpty else { return nil }
+            let windowPos = CursorPosition(range: NSRange(location: caret, length: 0))
+            return (windowPos, ranked)
         } catch {
             self.lastCompletionItems = nil
             guard generation == self.completionGeneration, !crashShown else { return nil }
             crashShown = true
             let message = (error as NSError).localizedDescription
-            let reason = message.isEmpty ? "SourceKit-LSP stopped responding." : message
+            let reason = message.isEmpty ? "Language server stopped responding." : message
             return (cursorPosition, [LSPCompletionItem(error: reason)])
         }
     }
@@ -287,7 +294,6 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         guard let items = lastCompletionItems, !items.isEmpty else { return nil }
         guard let caret = offset(for: cursorPosition) else { return nil }
         let prefix = document.completionPrefix(at: caret)
-        guard !prefix.isEmpty else { return nil }
         let ranked = rankedCompletions(items, query: prefix).map(LSPCompletionItem.init)
         return ranked.isEmpty ? nil : ranked
     }
@@ -662,6 +668,10 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     /// 1-indexed `CursorPosition` → UTF-8 content offset (ASCII source: == UTF-16).
     private func offset(for cursorPosition: CursorPosition?) -> Int? {
         guard let cursorPosition else { return nil }
+        if cursorPosition.range != .notFound {
+            return cursorPosition.range.location
+        }
+        guard cursorPosition.start.line > 0, cursorPosition.start.column > 0 else { return nil }
         return document.offset(
             forLine: cursorPosition.start.line - 1,
             column: cursorPosition.start.column - 1

@@ -20,7 +20,7 @@ public struct TabBarView: View {
     let onClose: (CodeEditorCore.Document) -> Void
     let onNew: () -> Void
 
-    @State private var hoveredDocument: CodeEditorCore.Document?
+    @State private var hoveredDocumentId: UUID?
 
     public init(
         documents: [CodeEditorCore.Document],
@@ -47,7 +47,19 @@ public struct TabBarView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 2) {
                         ForEach(documents) { document in
-                            tab(for: document)
+                            TabItemView(
+                                document: document,
+                                isActive: document.id == activeDocument?.id,
+                                isHovered: hoveredDocumentId == document.id,
+                                theme: theme,
+                                onSelect: { onSelect(document) },
+                                onClose: { onClose(document) },
+                                onHover: { isHovered in
+                                    withAnimation(.easeOut(duration: 0.1)) {
+                                        hoveredDocumentId = isHovered ? document.id : (hoveredDocumentId == document.id ? nil : hoveredDocumentId)
+                                    }
+                                }
+                            )
                         }
                     }
                     .padding(.horizontal, Metrics.Space.compact)
@@ -96,14 +108,21 @@ public struct TabBarView: View {
         .foregroundStyle(.secondary)
         .help("New File (⌘N)")
     }
+}
 
-    // MARK: - Tabs
+// MARK: - TabItemView
 
-    private func tab(for document: CodeEditorCore.Document) -> some View {
-        let isActive = document === activeDocument
-        let isHovered = hoveredDocument?.id == document.id
+private struct TabItemView: View {
+    @Bindable var document: CodeEditorCore.Document
+    let isActive: Bool
+    let isHovered: Bool
+    let theme: Theme
+    let onSelect: () -> Void
+    let onClose: () -> Void
+    let onHover: (Bool) -> Void
 
-        return HStack(spacing: Metrics.Space.compact) {
+    var body: some View {
+        HStack(spacing: Metrics.Space.compact) {
             if document.isModified {
                 Circle()
                     .fill(isActive ? theme.chrome.accent.color : theme.secondaryText.color)
@@ -118,39 +137,30 @@ public struct TabBarView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            closeButton(for: document, isActive: isActive, isHovered: isHovered)
+            closeButton
         }
         .padding(.leading, Metrics.Space.regular)
         .padding(.trailing, isActive || isHovered ? Metrics.Space.compact : Metrics.Space.regular + 8)
         .padding(.vertical, Metrics.Space.compact)
         .foregroundStyle(isActive ? theme.text.color : theme.secondaryText.color)
-        .background(tabBackground(isActive: isActive, isHovered: isHovered))
+        .background(tabBackground)
         .clipShape(
             UnevenRoundedRectangle(
                 topLeadingRadius: Metrics.Radius.row,
                 topTrailingRadius: Metrics.Radius.row
             )
         )
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.1)) {
-                hoveredDocument = hovering ? document : (hoveredDocument?.id == document.id ? nil : hoveredDocument)
-            }
+        .onHover { isHovering in
+            onHover(isHovering)
         }
         .contentShape(Rectangle())
-        .onTapGesture { onSelect(document) }
+        .onTapGesture { onSelect() }
         .help(document.name)
     }
 
-    /// The close affordance. Always present so layout never shifts; invisible on
-    /// unhovered inactive tabs so the strip stays quiet, but never replaced by the
-    /// dirty dot.
-    private func closeButton(
-        for document: CodeEditorCore.Document,
-        isActive: Bool,
-        isHovered: Bool
-    ) -> some View {
+    private var closeButton: some View {
         Button {
-            onClose(document)
+            onClose()
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 8, weight: .bold))
@@ -169,9 +179,8 @@ public struct TabBarView: View {
     }
 
     @ViewBuilder
-    private func tabBackground(isActive: Bool, isHovered: Bool) -> some View {
+    private var tabBackground: some View {
         if isActive {
-            // Matches the canvas, so the tab becomes the top of the editor.
             theme.background.color
         } else if isHovered {
             theme.chrome.tabHoverBackground.color
