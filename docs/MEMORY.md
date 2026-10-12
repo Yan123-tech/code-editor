@@ -443,6 +443,62 @@ This is toolchain-specific and may resolve itself on a newer SDK; do not general
 
 ---
 
+## 24. CodeEditTextView ignores `NSTextStorage` underline attributes; use `EmphasisManager`
+
+`CodeEditTextView.TextView` does not use standard AppKit/TextKit underline rendering, and
+`CodeEditSourceEditor`'s Tree-sitter `Highlighter` invokes `textStorage.setAttributes(...)` on
+every token pass, instantly blowing away any attributes attached directly to `textStorage`.
+
+Diagnostic underlines, syntax warnings, and problem highlighting must be added via
+`textView.emphasisManager`:
+```swift
+textView.emphasisManager?.replaceEmphases(
+    [Emphasis(range: clampedRange, style: .underline(color: color))],
+    for: "CodeEditor.LSP.diagnostics"
+)
+```
+`Emphasis` renders as dedicated `CAShapeLayer`s underneath the text and is preserved across
+highlighter updates.
+
+---
+
+## 25. Sidebar chevron buttons in a `List(selection:)` must not mutate selection
+
+In SwiftUI, clicking a `Button` inside a `List` row does not trigger row selection unless the button
+action explicitly mutates `selection = item`. When the button did `selection = item`, it caused
+both the button action *and* the `List`'s `.onChange(of: selection)` to run `toggleExpansion`.
+Because both ran back-to-back, expansion toggled twice and immediately cancelled out whenever an
+unselected folder's chevron was clicked.
+
+The disclosure chevron `Button` must only call `fileSystemManager.toggleExpansion(of: item)` and
+leave `selection` untouched.
+
+---
+
+## 26. Programmatic sidebar selection must be guarded from triggering `onOpenFile`
+
+When a tab switches, `FileExplorerView` reveals the active document and selects it in the tree.
+Without a suppression flag (`isSyncingSelection`), mutating `selection` triggers
+`.onChange(of: selection) -> activate() -> onOpenFile()`, firing an asynchronous file open task
+that echoes back into the document manager. This created a rapid oscillating feedback loop
+fluctuating between tabs and repeatedly reloading the editor view.
+
+Always guard programmatic selection updates with `isSyncingSelection = true` and ensure
+`activate` ignores items whose URL already equals `activeDocumentURL`.
+
+---
+
+## 27. AppKit `NSScrollView` floating subviews bleed past SwiftUI views without `.clipped()` and `.zIndex()`
+
+`GutterView` (line numbers) in `CodeEditSourceEditor` is an `NSScrollView` floating subview.
+When scrolling, AppKit views can draw over sibling SwiftUI views in a `VStack` because SwiftUI
+does not clip view boundaries by default, and later views draw on top of earlier ones.
+
+`editorArea` must be explicitly `.clipped()`, and `TabBarView` must declare `.zIndex(1)` and
+`.clipped()` with an opaque base layer so line numbers never bleed or layer into the tab bar.
+
+---
+
 ## Quick reference
 
 | Question | Answer |

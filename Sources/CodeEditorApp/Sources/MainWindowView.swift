@@ -36,8 +36,10 @@ struct MainWindowView: View {
                     onClose: { document in appState.requestClose(document) },
                     onNew: { appState.newFile() }
                 )
+                .zIndex(1)
 
                 editorArea
+                    .clipped()
 
                 if appState.isStatusBarVisible {
                     StatusBarView(appState: appState)
@@ -191,6 +193,7 @@ struct MainWindowView: View {
                 appState: appState
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         } else {
             EmptyStateView(
                 appState: appState,

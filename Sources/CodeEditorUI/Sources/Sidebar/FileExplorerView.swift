@@ -20,6 +20,7 @@ public struct FileExplorerView: View {
     let onCreateIn: (URL, NewItemKind) -> Void
 
     @State private var selection: FileSystemItem?
+    @State private var isSyncingSelection = false
     @State private var renaming: FileSystemItem?
     @State private var deleting: FileSystemItem?
     @State private var errorMessage: String?
@@ -102,6 +103,10 @@ public struct FileExplorerView: View {
         }
         .listStyle(.sidebar)
         .onChange(of: selection) { _, newValue in
+            if isSyncingSelection {
+                isSyncingSelection = false
+                return
+            }
             // Selection drives activation, as it does in Xcode's navigator:
             // landing on a file opens it, landing on a folder expands it. Arrowing
             // through the tree does the same, which is why the expansion lives
@@ -115,6 +120,20 @@ public struct FileExplorerView: View {
             if let selection { activate(selection) }
             return .handled
         }
+        .onKeyPress(.rightArrow) {
+            if let selection, selection.isDirectory, !fileSystemManager.isExpanded(selection.url) {
+                fileSystemManager.toggleExpansion(of: selection)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.leftArrow) {
+            if let selection, selection.isDirectory, fileSystemManager.isExpanded(selection.url) {
+                fileSystemManager.toggleExpansion(of: selection)
+                return .handled
+            }
+            return .ignored
+        }
     }
 
     /// What selecting a row does: files open, folders toggle.
@@ -122,6 +141,7 @@ public struct FileExplorerView: View {
         if item.isDirectory {
             fileSystemManager.toggleExpansion(of: item)
         } else {
+            guard item.url != activeDocumentURL else { return }
             onOpenFile(item.url)
         }
     }
@@ -187,15 +207,12 @@ public struct FileExplorerView: View {
         }
     }
 
-    /// The disclosure chevron. A real control: expansion hangs off the selection change,
-    /// so a folder that is *already* selected produces no change and nothing would toggle.
-    /// Selecting it first also makes the row selection agree with the chevron, which is
-    /// what stops the two from cancelling out.
+    /// The disclosure chevron. Directly toggles folder expansion without mutating row selection,
+    /// ensuring expansion works predictably on single click whether the item was previously selected or not.
     @ViewBuilder
     private func disclosureControl(for item: FileSystemItem) -> some View {
         if item.isDirectory {
             Button {
-                selection = item
                 fileSystemManager.toggleExpansion(of: item)
             } label: {
                 Image(systemName: fileSystemManager.isExpanded(item.url) ? "chevron.down" : "chevron.right")
@@ -227,7 +244,12 @@ public struct FileExplorerView: View {
         await fileSystemManager.reveal(url)
 
         let parent = url.deletingLastPathComponent()
-        selection = fileSystemManager.children(of: parent).first { $0.url == url } ?? selection
+        if let target = fileSystemManager.children(of: parent).first(where: { $0.url == url }) {
+            if selection != target {
+                isSyncingSelection = true
+                selection = target
+            }
+        }
     }
 
     // MARK: - Bindings

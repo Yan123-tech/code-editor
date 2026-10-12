@@ -277,6 +277,23 @@ public struct Diagnostic: Codable, Identifiable, Equatable, Sendable {
         self.source = source
         self.message = message
     }
+
+    enum CodingKeys: String, CodingKey {
+        case range, severity, code, source, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        range = try container.decode(Range.self, forKey: .range)
+        message = (try? container.decode(String.self, forKey: .message)) ?? ""
+        source = try? container.decodeIfPresent(String.self, forKey: .source)
+        code = try? container.decodeIfPresent(DiagnosticCode.self, forKey: .code)
+        if let sevRaw = try? container.decodeIfPresent(Int.self, forKey: .severity) {
+            severity = DiagnosticSeverity(rawValue: sevRaw)
+        } else {
+            severity = nil
+        }
+    }
 }
 
 // MARK: - Symbols
@@ -447,22 +464,35 @@ public struct WorkspaceFolder: Encodable, Sendable {
 
 /// The capabilities this client advertises.
 public struct ClientCapabilities: Encodable, Sendable {
+    public struct PublishDiagnostics: Encodable, Sendable {
+        public var relatedInformation: Bool
+        public var versionSupport: Bool
+
+        public init(relatedInformation: Bool = true, versionSupport: Bool = true) {
+            self.relatedInformation = relatedInformation
+            self.versionSupport = versionSupport
+        }
+    }
+
     public struct TextDocument: Encodable, Sendable {
         public var synchronization: Synchronization
         public var completion: Completion
         public var hover: Hover
         public var definition: DynamicRegistration
+        public var publishDiagnostics: PublishDiagnostics
 
         public init(
             synchronization: Synchronization = .init(),
             completion: Completion = .init(),
             hover: Hover = .init(),
-            definition: DynamicRegistration = .init()
+            definition: DynamicRegistration = .init(),
+            publishDiagnostics: PublishDiagnostics = .init()
         ) {
             self.synchronization = synchronization
             self.completion = completion
             self.hover = hover
             self.definition = definition
+            self.publishDiagnostics = publishDiagnostics
         }
     }
 

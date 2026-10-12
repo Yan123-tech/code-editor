@@ -59,6 +59,7 @@ public struct TabBarView: View {
             .frame(height: Metrics.Height.tabStrip)
         }
         .frame(height: Metrics.Height.tabStrip)
+        .clipped()
     }
 
     // MARK: - Strip
