@@ -78,6 +78,16 @@ public struct CodeEditorView: View {
         .onChange(of: editorState.isFindVisible) { _, visible in
             sourceEditorState.findPanelVisible = visible
         }
+        .onChange(of: appState.diagnosticJumpRequest) { _, request in
+            guard let request else { return }
+            let diagnostic = request.diagnostic
+            if let range = document.nsRange(from: diagnostic.range.start, to: diagnostic.range.end) {
+                lspCoordinator.jumpTo(range: range)
+                document.setSelection(from: diagnostic.range.start, to: diagnostic.range.end)
+                editorState.syncSelection(of: document)
+            }
+            appState.diagnosticJumpRequest = nil
+        }
     }
 
     // MARK: - Configuration

@@ -34,7 +34,7 @@ The window was rebuilt around native macOS chrome. The design tokens live in
 | **Sidebar** | Click or arrow to a row to activate: files open, folders expand. The active document is revealed by expanding its ancestors, shown bold with an accent icon. Delete asks first. |
 | **Tabs** | 32pt strip, active tab filled with the canvas colour and rounded so it merges with the editor. Dirty dot beside the title; close button always present. |
 | **Status bar** | Caret, selection count, UTF-8, line ending, language, a live error/warning
-  count from LSP diagnostics, and a "Changed on disk" hint while a save conflict is
+  count from LSP diagnostics (clicking opens a scrollable Problems popover with click-to-jump navigation and line emphasis), and a "Changed on disk" hint while a save conflict is
   pending. The byte count is gone. |
 | **Empty state** | One, in the canvas. With a workspace open it points at the sidebar; without one it offers Open Folder as the single prominent action. |
 | **Find/replace** | ⌘F opens CodeEdit's own panel through `SourceEditorState.findPanelVisible`. |

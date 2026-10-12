@@ -336,6 +336,42 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         crashShown = false
     }
 
+    // MARK: - Navigation & Jump
+
+    private static let jumpEmphasisGroupId = "CodeEditor.diagnosticJump"
+
+    /// Centers and selects the target range in the editor, flashing an emphasis highlight.
+    func jumpTo(range: NSRange) {
+        guard let tv = controller?.textView else { return }
+        let docLength = (tv.string as NSString).length
+        guard docLength > 0 else { return }
+
+        var targetRange = range
+        if targetRange.location >= docLength {
+            targetRange = NSRange(location: max(0, docLength - 1), length: 1)
+        }
+
+        var effectiveRange = targetRange
+        if effectiveRange.length == 0 {
+            effectiveRange = expandedTokenRange(
+                at: effectiveRange.location, in: tv.string as NSString, docLength: docLength)
+        } else if effectiveRange.location + effectiveRange.length > docLength {
+            effectiveRange.length = docLength - effectiveRange.location
+        }
+
+        tv.selectionManager.setSelectedRange(targetRange)
+        tv.scrollToRange(targetRange, center: true)
+        tv.window?.makeFirstResponder(tv)
+
+        let jumpEmphasis = Emphasis(
+            range: effectiveRange,
+            style: .standard,
+            flash: true,
+            selectInDocument: true
+        )
+        tv.emphasisManager?.addEmphasis(jumpEmphasis, for: Self.jumpEmphasisGroupId)
+    }
+
     // MARK: - JumpToDefinitionDelegate
 
     /// Builds a definition link at the hovered/⌘-clicked range. Also fetches a hover

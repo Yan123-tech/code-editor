@@ -68,4 +68,67 @@ struct DocumentDiagnosticsTests {
         #expect(doc.diagnostics.isEmpty)
         #expect(doc.isModified)
     }
+
+    @Test("DocumentDiagnostic Identifiable produces stable and distinguishing IDs")
+    func diagnosticIdentifiable() {
+        let diag1 = DocumentDiagnostic(
+            range: TextSelection(start: 10, end: 15),
+            severity: .error,
+            message: "syntax error",
+            source: "swift"
+        )
+        let diag2 = DocumentDiagnostic(
+            range: TextSelection(start: 10, end: 15),
+            severity: .error,
+            message: "syntax error",
+            source: "swift"
+        )
+        let diag3 = DocumentDiagnostic(
+            range: TextSelection(start: 20, end: 25),
+            severity: .warning,
+            message: "unused variable",
+            source: "swift"
+        )
+
+        #expect(diag1.id == diag2.id)
+        #expect(diag1.id != diag3.id)
+        #expect(!diag1.id.isEmpty)
+    }
+
+    @Test("document diagnostic sorting orders by line, severity, and column")
+    func diagnosticSorting() {
+        let doc = Document(content: "line 1\nline 2 error here\nline 3 warning")
+        let diag1 = DocumentDiagnostic(
+            range: TextSelection(start: 7, end: 13),  // line 2
+            severity: .warning,
+            message: "warning in line 2"
+        )
+        let diag2 = DocumentDiagnostic(
+            range: TextSelection(start: 7, end: 13),  // line 2
+            severity: .error,
+            message: "error in line 2"
+        )
+        let diag3 = DocumentDiagnostic(
+            range: TextSelection(start: 25, end: 32),  // line 3
+            severity: .error,
+            message: "error in line 3"
+        )
+        let diags = [diag3, diag1, diag2]
+
+        let sorted = diags.sorted { lhs, rhs in
+            let lhsPos = doc.lineAndColumn(for: lhs.range.start) ?? (line: 0, column: 0)
+            let rhsPos = doc.lineAndColumn(for: rhs.range.start) ?? (line: 0, column: 0)
+            if lhsPos.line != rhsPos.line {
+                return lhsPos.line < rhsPos.line
+            }
+            if lhs.severity.rawValue != rhs.severity.rawValue {
+                return lhs.severity.rawValue < rhs.severity.rawValue
+            }
+            return lhsPos.column < rhsPos.column
+        }
+
+        #expect(sorted[0].message == "error in line 2")
+        #expect(sorted[1].message == "warning in line 2")
+        #expect(sorted[2].message == "error in line 3")
+    }
 }

@@ -43,6 +43,9 @@ public final class AppState {
     // Recent Projects
     public var recentProjects: [RecentProject] = []
 
+    // Diagnostic navigation
+    public var diagnosticJumpRequest: DiagnosticJumpRequest?
+
     /// Terminal panel height in points, persisted. Drag-resized, never fixed.
     public var terminalHeight: Double {
         didSet {
@@ -526,6 +529,16 @@ public final class AppState {
         }
     }
 
+    // MARK: - Diagnostic navigation
+
+    /// Navigates the editor to the specified diagnostic, focusing the document if needed.
+    public func jumpTo(diagnostic: DocumentDiagnostic, in document: CodeEditorCore.Document? = nil) {
+        if let doc = document, documentManager.activeDocument?.id != doc.id {
+            documentManager.activate(doc)
+        }
+        diagnosticJumpRequest = DiagnosticJumpRequest(diagnostic: diagnostic)
+    }
+
     /// Tear down every language server. Call on workspace switch and on quit.
     public func disconnectLanguageServers() {
         let clients = Array(languageServers.values)
@@ -534,6 +547,17 @@ public final class AppState {
         for client in clients {
             Task { await client.disconnect() }
         }
+    }
+}
+
+/// Carries a diagnostic jump target with a unique identity so repeat clicks trigger.
+public struct DiagnosticJumpRequest: Equatable, Sendable {
+    public let id: UUID
+    public let diagnostic: DocumentDiagnostic
+
+    public init(diagnostic: DocumentDiagnostic) {
+        self.id = UUID()
+        self.diagnostic = diagnostic
     }
 }
 
