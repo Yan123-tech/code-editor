@@ -79,7 +79,7 @@ public actor JSONRPCTransport {
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/usr/bin",
-            "/bin"
+            "/bin",
         ]
         let newPath = (extraPaths + [currentPath]).filter { !$0.isEmpty }.joined(separator: ":")
         env["PATH"] = newPath

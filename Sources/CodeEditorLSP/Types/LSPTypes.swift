@@ -447,7 +447,7 @@ public struct GoplsInitializationOptions: Codable, Equatable, Sendable {
             "unusedparams": true,
             "shadow": true,
             "nilness": true,
-            "fieldalignment": false
+            "fieldalignment": false,
         ]
     ) {
         self.staticcheck = staticcheck

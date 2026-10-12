@@ -578,7 +578,7 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         }
 
         guard let offset = tv.layoutManager.textOffsetAtPoint(viewPoint),
-              offset < stringLength
+            offset < stringLength
         else {
             closeDiagnosticPopover()
             return
@@ -590,8 +590,9 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
                 return true
             }
             if let diagLine = document.lineAndColumn(for: range.location)?.line,
-               let currentLine = document.lineAndColumn(for: offset)?.line,
-               diagLine == currentLine {
+                let currentLine = document.lineAndColumn(for: offset)?.line,
+                diagLine == currentLine
+            {
                 return true
             }
             return false
@@ -603,7 +604,7 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         }
 
         guard let firstDiag = matchingDiagnostics.first,
-              let anchorRange = document.nsRange(from: firstDiag.range.start, to: firstDiag.range.end)
+            let anchorRange = document.nsRange(from: firstDiag.range.start, to: firstDiag.range.end)
         else {
             closeDiagnosticPopover()
             return

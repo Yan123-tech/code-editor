@@ -56,7 +56,9 @@ public struct TabBarView: View {
                                 onClose: { onClose(document) },
                                 onHover: { isHovered in
                                     withAnimation(.easeOut(duration: 0.1)) {
-                                        hoveredDocumentId = isHovered ? document.id : (hoveredDocumentId == document.id ? nil : hoveredDocumentId)
+                                        hoveredDocumentId =
+                                            isHovered
+                                            ? document.id : (hoveredDocumentId == document.id ? nil : hoveredDocumentId)
                                     }
                                 }
                             )
