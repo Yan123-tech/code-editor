@@ -116,7 +116,9 @@ public struct CodeEditorView: View {
                 showFoldingRibbon: editorState.showFoldingRibbon,
                 invisibleCharactersConfiguration: invisibles,
                 warningCharacters: Self.warningCharacters,
-                codeSuggestionTriggerCharacters: [".", ":", "/", "@", "$", "_"]
+                codeSuggestionTriggerCharacters: editorState.completionMode == .ai
+                    ? [".", ":", "/", "@", "$", "_", "(", "{", "[", " ", "=", ",", ";", ">", "<", "\n"]
+                    : [".", ":", "/", "@", "$", "_"]
             )
         )
     }

@@ -41,6 +41,7 @@ The window was rebuilt around native macOS chrome. The design tokens live in
 | **Quick open** | ⌘P over a bounded filesystem index. Matched characters are emphasised. |
 | **Terminal** | Drag-resized 120–600pt, persisted. Semantic status dot, icon buttons, selectable output. |
 | **Session** | Workspace root, open tabs and active tab restore on launch. |
+| **Autocompletion & AI** | User can choose between Language Server (LSP) and AI completions in Settings. Supports any OpenAI-compatible API (OpenAI, OpenRouter, Ollama, LM Studio), with dynamic model fetching/search chooser, Copilot-style suggestions with sparkles icon, and Tab insertion. |
 
 ## Working
 

@@ -19,6 +19,21 @@ public final class EditorState {
     public var showInvisibles = false
     public var formatOnSave = true
 
+    // MARK: - Autocompletion Preferences
+
+    public enum CompletionMode: String, CaseIterable, Sendable {
+        case lsp = "LSP"
+        case ai = "AI"
+    }
+
+    public var completionMode: CompletionMode = .lsp
+    public var aiBaseURL: String = "https://api.openai.com/v1"
+    public var aiApiKey: String = ""
+    public var aiModel: String = "gpt-4o-mini"
+    public var aiAvailableModels: [String] = []
+    public var aiIsFetchingModels: Bool = false
+    public var aiFetchError: String?
+
     // Transient state for the active document
     public private(set) var selectedLines: Set<Int> = []
     public private(set) var caretLine = 0
@@ -35,6 +50,11 @@ public final class EditorState {
     private static let minimapKey = "CodeEditor.showMinimap"
     private static let foldingKey = "CodeEditor.showFoldingRibbon"
     private static let invisiblesKey = "CodeEditor.showInvisibles"
+    private static let completionModeKey = "CodeEditor.completionMode"
+    private static let aiBaseURLKey = "CodeEditor.aiBaseURL"
+    private static let aiApiKeyKey = "CodeEditor.aiApiKey"
+    private static let aiModelKey = "CodeEditor.aiModel"
+    private static let aiAvailableModelsKey = "CodeEditor.aiAvailableModels"
 
     public init() {}
 
@@ -59,6 +79,23 @@ public final class EditorState {
             showInvisibles = defaults.bool(forKey: Self.invisiblesKey)
         }
         indentOption = .spaces(count: tabWidth)
+        if let modeRaw = defaults.string(forKey: Self.completionModeKey),
+            let mode = CompletionMode(rawValue: modeRaw)
+        {
+            completionMode = mode
+        }
+        if let base = defaults.string(forKey: Self.aiBaseURLKey), !base.isEmpty {
+            aiBaseURL = base
+        }
+        if let key = defaults.string(forKey: Self.aiApiKeyKey) {
+            aiApiKey = key
+        }
+        if let model = defaults.string(forKey: Self.aiModelKey), !model.isEmpty {
+            aiModel = model
+        }
+        if let models = defaults.stringArray(forKey: Self.aiAvailableModelsKey) {
+            aiAvailableModels = models
+        }
     }
 
     public func setFontSize(_ size: Double, defaults: UserDefaults = .standard) {
@@ -90,6 +127,31 @@ public final class EditorState {
     public func setShowInvisibles(_ show: Bool, defaults: UserDefaults = .standard) {
         showInvisibles = show
         defaults.set(show, forKey: Self.invisiblesKey)
+    }
+
+    public func setCompletionMode(_ mode: CompletionMode, defaults: UserDefaults = .standard) {
+        completionMode = mode
+        defaults.set(mode.rawValue, forKey: Self.completionModeKey)
+    }
+
+    public func setAIBaseURL(_ url: String, defaults: UserDefaults = .standard) {
+        aiBaseURL = url
+        defaults.set(url, forKey: Self.aiBaseURLKey)
+    }
+
+    public func setAIApiKey(_ key: String, defaults: UserDefaults = .standard) {
+        aiApiKey = key
+        defaults.set(key, forKey: Self.aiApiKeyKey)
+    }
+
+    public func setAIModel(_ model: String, defaults: UserDefaults = .standard) {
+        aiModel = model
+        defaults.set(model, forKey: Self.aiModelKey)
+    }
+
+    public func setAIAvailableModels(_ models: [String], defaults: UserDefaults = .standard) {
+        aiAvailableModels = models
+        defaults.set(models, forKey: Self.aiAvailableModelsKey)
     }
 
     // MARK: - Caret tracking
