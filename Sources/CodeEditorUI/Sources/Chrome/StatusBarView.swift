@@ -9,6 +9,9 @@ import SwiftUI
 public struct StatusBarView: View {
     let appState: AppState
 
+    @State private var isDiagnosticsPopoverPresented = false
+    @State private var isDiagnosticsHovered = false
+
     public init(appState: AppState) {
         self.appState = appState
     }
@@ -80,15 +83,47 @@ public struct StatusBarView: View {
             .fixedSize()
     }
 
-    /// A compact error/warning count, coloured by the worst severity present.
+    /// A compact error/warning count button, coloured by the worst severity present.
+    /// Clicking opens a scrollable pop-up list of problems with click-to-jump navigation.
     @ViewBuilder
     private func diagnosticSummary(for document: CodeEditorCore.Document) -> some View {
         let errors = document.diagnostics.filter { $0.severity == .error }.count
         let warnings = document.diagnostics.filter { $0.severity == .warning }.count
         let color: Color = errors > 0 ? appState.theme.semantic.danger.color : appState.theme.semantic.warning.color
-        Text("\(errors) error\(errors == 1 ? "" : "s"), \(warnings) warning\(warnings == 1 ? "" : "s")")
+
+        Button {
+            isDiagnosticsPopoverPresented.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                if errors > 0 {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                } else if warnings > 0 {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                Text("\(errors) error\(errors == 1 ? "" : "s"), \(warnings) warning\(warnings == 1 ? "" : "s")")
+            }
             .foregroundStyle(color)
             .padding(.vertical, 2)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(isDiagnosticsHovered ? appState.theme.chrome.rowHover.color : Color.clear)
+            )
             .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .onHover { isDiagnosticsHovered = $0 }
+        .popover(isPresented: $isDiagnosticsPopoverPresented, arrowEdge: .bottom) {
+            DiagnosticsListView(
+                document: document,
+                theme: appState.theme,
+                onSelect: { diagnostic in
+                    appState.jumpTo(diagnostic: diagnostic, in: document)
+                    isDiagnosticsPopoverPresented = false
+                }
+            )
+        }
     }
 }
