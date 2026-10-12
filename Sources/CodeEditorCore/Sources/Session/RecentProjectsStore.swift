@@ -26,7 +26,7 @@ public enum RecentProjectsStore {
     /// Load the list of recent projects, filtering out paths that no longer exist on disk.
     public static func load(defaults: UserDefaults = .standard) -> [RecentProject] {
         guard let data = defaults.data(forKey: key),
-              let projects = try? JSONDecoder().decode([RecentProject].self, from: data)
+            let projects = try? JSONDecoder().decode([RecentProject].self, from: data)
         else {
             return []
         }

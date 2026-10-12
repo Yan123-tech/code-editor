@@ -1,7 +1,7 @@
 import AppKit
-import CodeEditorCore
 import CodeEditSourceEditor
 import CodeEditTextView
+import CodeEditorCore
 
 /// Keeps the text view's contents in step with the document it is showing and ensures
 /// edits in the text view immediately mark the document modified.

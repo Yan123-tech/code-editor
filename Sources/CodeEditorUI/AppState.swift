@@ -438,7 +438,9 @@ public final class AppState {
             terminal.connect()
         }
         let goMod = root.appendingPathComponent("go.mod")
-        let isGo = FileManager.default.fileExists(atPath: goMod.path) || documentManager.activeDocument?.language.identifier == "go"
+        let isGo =
+            FileManager.default.fileExists(atPath: goMod.path)
+            || documentManager.activeDocument?.language.identifier == "go"
         if isGo {
             terminal.submit("go run .")
         } else {
@@ -456,7 +458,9 @@ public final class AppState {
             terminal.connect()
         }
         let goMod = root.appendingPathComponent("go.mod")
-        let isGo = FileManager.default.fileExists(atPath: goMod.path) || documentManager.activeDocument?.language.identifier == "go"
+        let isGo =
+            FileManager.default.fileExists(atPath: goMod.path)
+            || documentManager.activeDocument?.language.identifier == "go"
         if isGo {
             terminal.submit("go test -v ./...")
         } else {

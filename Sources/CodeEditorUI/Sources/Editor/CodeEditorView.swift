@@ -1,7 +1,7 @@
-import CodeEditorCore
-import CodeEditorThemes
 import CodeEditSourceEditor
 import CodeEditTextView
+import CodeEditorCore
+import CodeEditorThemes
 import SwiftUI
 
 /// Wraps `SourceEditor` from CodeEditSourceEditor, bridging document state and
