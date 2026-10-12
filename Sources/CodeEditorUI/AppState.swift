@@ -529,6 +529,34 @@ public final class AppState {
         }
     }
 
+    // MARK: - AI Completion
+
+    /// Fetches available models from the configured OpenAI-compatible API base URL.
+    public func fetchAIModels() async {
+        editorState.aiIsFetchingModels = true
+        editorState.aiFetchError = nil
+        do {
+            let models = try await OpenAIClient.shared.fetchModels(
+                baseURL: editorState.aiBaseURL,
+                apiKey: editorState.aiApiKey
+            )
+            editorState.setAIAvailableModels(models)
+            if !models.isEmpty && !models.contains(editorState.aiModel) {
+                if let preferred = models.first(where: {
+                    $0.contains("gpt-4o") || $0.contains("coder") || $0.contains("claude")
+                }) {
+                    editorState.setAIModel(preferred)
+                } else if let first = models.first {
+                    editorState.setAIModel(first)
+                }
+            }
+            editorState.aiIsFetchingModels = false
+        } catch {
+            editorState.aiIsFetchingModels = false
+            editorState.aiFetchError = (error as NSError).localizedDescription
+        }
+    }
+
     // MARK: - Diagnostic navigation
 
     /// Navigates the editor to the specified diagnostic, focusing the document if needed.

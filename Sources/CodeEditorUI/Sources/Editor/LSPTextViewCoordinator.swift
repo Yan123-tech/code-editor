@@ -80,6 +80,55 @@ final class LSPCompletionItem: CodeSuggestionEntry {
     }
 }
 
+@MainActor
+final class AICompletionItem: CodeSuggestionEntry {
+    let completionText: String
+    let modelName: String
+    let isError: Bool
+
+    init(text: String, model: String) {
+        self.completionText = text
+        self.modelName = model
+        self.isError = false
+    }
+
+    init(error message: String) {
+        self.completionText = message
+        self.modelName = "AI"
+        self.isError = true
+    }
+
+    // MARK: - CodeSuggestionEntry
+
+    var label: String {
+        if isError { return completionText }
+        let firstLine = completionText.components(separatedBy: .newlines).first ?? completionText
+        return firstLine.trimmingCharacters(in: .whitespaces)
+    }
+
+    var detail: String? {
+        isError ? "AI Error" : "AI (\(modelName))"
+    }
+
+    var documentation: String? {
+        isError ? nil : completionText
+    }
+
+    var pathComponents: [String]? { nil }
+    var targetPosition: CursorPosition? { nil }
+    var sourcePreview: String? { nil }
+
+    var image: Image {
+        Image(systemName: isError ? "exclamationmark.triangle.fill" : "sparkles")
+    }
+
+    var imageColor: Color {
+        isError ? .red : .purple
+    }
+
+    var deprecated: Bool { false }
+}
+
 // MARK: - Coordinator
 
 /// Wires a language server into a `TextViewController` so completions and edits flow to it.
@@ -238,7 +287,10 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     // MARK: - CodeSuggestionDelegate
 
     func completionTriggerCharacters() -> Set<String> {
-        [".", ":", "/", "@", "$", "_"]
+        if appState?.editorState.completionMode == .ai {
+            return [".", ":", "/", "@", "$", "_", "(", "{", "[", " ", "=", ",", ";", ">", "<", "\n"]
+        }
+        return [".", ":", "/", "@", "$", "_"]
     }
 
     /// Fetch completions at the caret, rank them, and present. A stale in-flight request
@@ -250,6 +302,14 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         completionGeneration += 1
         let generation = completionGeneration
         didChangeTask?.cancel()
+
+        if appState?.editorState.completionMode == .ai {
+            return await requestAICompletion(
+                textView: textView,
+                cursorPosition: cursorPosition,
+                generation: generation
+            )
+        }
 
         guard LanguageServerRegistry.descriptor(for: document.language.identifier) != nil else { return nil }
         guard let uri = document.url?.absoluteString else { return nil }
@@ -307,6 +367,14 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         textView: TextViewController,
         cursorPosition: CursorPosition?
     ) {
+        if let aiItem = item as? AICompletionItem {
+            guard !aiItem.isError, let tv = controller?.textView else { return }
+            let ns = tv.string as NSString
+            let caret = offset(for: cursorPosition) ?? ns.length
+            tv.replaceCharacters(in: NSRange(location: caret, length: 0), with: aiItem.completionText)
+            return
+        }
+
         guard let entry = item as? LSPCompletionItem, !entry.isError,
             let completionItem = entry.completionItem,
             let tv = controller?.textView
@@ -329,6 +397,64 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         }
 
         tv.replaceCharacters(in: range, with: completionItem.insertionText)
+    }
+
+    private func requestAICompletion(
+        textView: TextViewController,
+        cursorPosition: CursorPosition,
+        generation: Int
+    ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
+        guard let appState = appState else { return nil }
+        let editorState = appState.editorState
+        let baseURL = editorState.aiBaseURL
+        let apiKey = editorState.aiApiKey
+        let model = editorState.aiModel
+
+        guard !model.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return (cursorPosition, [AICompletionItem(error: "Configure an AI model in Settings.")])
+        }
+
+        guard let caret = offset(for: cursorPosition),
+            let tv = controller?.textView
+        else { return nil }
+
+        let nsString = tv.string as NSString
+        let docLength = nsString.length
+
+        // Debounce: allow fast continuous typing to cancel earlier in-flight completions
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        guard generation == self.completionGeneration else { return nil }
+
+        let prefixStart = max(0, caret - 3000)
+        let prefix = nsString.substring(with: NSRange(location: prefixStart, length: caret - prefixStart))
+
+        let suffixEnd = min(docLength, caret + 1000)
+        let suffix = nsString.substring(with: NSRange(location: caret, length: suffixEnd - caret))
+
+        let language = document.language.displayName
+
+        do {
+            let completion = try await OpenAIClient.shared.complete(
+                prefix: prefix,
+                suffix: suffix,
+                language: language,
+                baseURL: baseURL,
+                apiKey: apiKey,
+                model: model
+            )
+
+            guard generation == self.completionGeneration else { return nil }
+            let trimmed = completion.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+
+            let item = AICompletionItem(text: completion, model: model)
+            let windowPos = CursorPosition(range: NSRange(location: caret, length: 0))
+            return (windowPos, [item])
+        } catch {
+            guard generation == self.completionGeneration else { return nil }
+            let reason = (error as NSError).localizedDescription
+            return (cursorPosition, [AICompletionItem(error: reason.isEmpty ? "AI completion error" : reason)])
+        }
     }
 
     func completionWindowDidClose() {
