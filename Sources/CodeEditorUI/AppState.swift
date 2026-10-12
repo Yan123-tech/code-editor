@@ -40,6 +40,9 @@ public final class AppState {
     public var quickOpenQuery = ""
     public private(set) var quickOpenResults: [QuickOpenMatch] = []
 
+    // Recent Projects
+    public var recentProjects: [RecentProject] = []
+
     /// Terminal panel height in points, persisted. Drag-resized, never fixed.
     public var terminalHeight: Double {
         didSet {
@@ -52,7 +55,7 @@ public final class AppState {
     private static let terminalHeightDefault: Double = 220
     private static let terminalHeightRange: ClosedRange<Double> = 120...600
 
-    public init(restoreSession: Bool = true) {
+    public init(restoreSession: Bool = false) {
         let fileSystemManager = FileSystemManager()
         let themeManager = ThemeManager()
         let editorState = EditorState()
@@ -65,6 +68,7 @@ public final class AppState {
         self.editorState = editorState
         self.terminal = TerminalSession()
         self.quickOpenIndex = QuickOpenIndex()
+        self.recentProjects = RecentProjectsStore.load()
 
         let stored = UserDefaults.standard.double(forKey: Self.terminalHeightKey)
         self.terminalHeight =
@@ -103,7 +107,19 @@ public final class AppState {
         terminal.workingDirectory = url
         terminal.clear()
         quickOpenIndex.reindex(root: url)
+        RecentProjectsStore.record(url: url)
+        recentProjects = RecentProjectsStore.load()
         persistSession()
+    }
+
+    public func removeRecentProject(_ project: RecentProject) {
+        RecentProjectsStore.remove(url: project.url)
+        recentProjects = RecentProjectsStore.load()
+    }
+
+    public func clearRecentProjects() {
+        RecentProjectsStore.clear()
+        recentProjects = []
     }
 
     // MARK: - Session
@@ -262,6 +278,11 @@ public final class AppState {
     }
 
     public func performSave(_ document: CodeEditorCore.Document, to url: URL? = nil) async {
+        if editorState.formatOnSave && document.language.identifier == "go" {
+            if let formatted = GoFormatter.format(document.content), formatted != document.content {
+                document.setContent(formatted)
+            }
+        }
         do {
             if let url {
                 try await document.save(to: url)
@@ -394,6 +415,53 @@ public final class AppState {
 
     public func setTheme(named name: String) {
         themeManager.setTheme(named: name)
+    }
+
+    // MARK: - Development Actions
+
+    public func formatActiveDocument() {
+        guard let document = documentManager.activeDocument else { return }
+        if document.language.identifier == "go" {
+            if let formatted = GoFormatter.format(document.content), formatted != document.content {
+                document.setContent(formatted)
+            }
+        }
+    }
+
+    public func runProject() {
+        if !isTerminalVisible {
+            isTerminalVisible = true
+        }
+        guard let root = fileSystemManager.rootURL else { return }
+        terminal.workingDirectory = root
+        if !terminal.isConnected {
+            terminal.connect()
+        }
+        let goMod = root.appendingPathComponent("go.mod")
+        let isGo = FileManager.default.fileExists(atPath: goMod.path) || documentManager.activeDocument?.language.identifier == "go"
+        if isGo {
+            terminal.submit("go run .")
+        } else {
+            terminal.submit("make run")
+        }
+    }
+
+    public func testProject() {
+        if !isTerminalVisible {
+            isTerminalVisible = true
+        }
+        guard let root = fileSystemManager.rootURL else { return }
+        terminal.workingDirectory = root
+        if !terminal.isConnected {
+            terminal.connect()
+        }
+        let goMod = root.appendingPathComponent("go.mod")
+        let isGo = FileManager.default.fileExists(atPath: goMod.path) || documentManager.activeDocument?.language.identifier == "go"
+        if isGo {
+            terminal.submit("go test -v ./...")
+        } else {
+            terminal.submit("make test")
+        }
     }
 
     // MARK: - Language servers

@@ -70,6 +70,21 @@ public actor JSONRPCTransport {
             process.currentDirectoryURL = workingDirectory
         }
 
+        var env = ProcessInfo.processInfo.environment
+        let currentPath = env["PATH"] ?? ""
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let extraPaths = [
+            "\(home)/go/bin",
+            "/usr/local/go/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin"
+        ]
+        let newPath = (extraPaths + [currentPath]).filter { !$0.isEmpty }.joined(separator: ":")
+        env["PATH"] = newPath
+        process.environment = env
+
         let input = Pipe()
         let output = Pipe()
         process.standardInput = input

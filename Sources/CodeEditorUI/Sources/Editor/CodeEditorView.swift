@@ -159,8 +159,9 @@ public struct CodeEditorView: View {
 
         var offset = 0
         for index in 0..<lineIndex {
-            offset += document.lines[index].utf8.count + document.lineEnding.character.utf8.count
+            offset += document.lines[index].utf16.count + document.lineEnding.character.utf16.count
         }
-        return offset + document.lines[lineIndex].utf8.prefix(max(0, position.start.column - 1)).count
+        let lineUTF16 = document.lines[lineIndex].utf16
+        return offset + min(max(0, position.start.column - 1), lineUTF16.count)
     }
 }

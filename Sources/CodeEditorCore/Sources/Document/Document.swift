@@ -333,36 +333,38 @@ public final class Document: Identifiable {
 
     // MARK: - Offset math
 
-    /// UTF-8 offset of a line/column pair.
+    /// UTF-16 code unit offset of a line/column pair (where column is in UTF-16 code units).
     public func offset(forLine line: Int, column: Int) -> Int? {
         guard line >= 0, line < lines.count, column >= 0 else { return nil }
         var offset = 0
         for index in 0..<line {
-            offset += lines[index].utf8.count + lineEnding.character.utf8.count
+            offset += lines[index].utf16.count + lineEnding.character.utf16.count
         }
-        offset += lines[line].utf8.prefix(column).count
+        let lineUTF16 = lines[line].utf16
+        offset += min(column, lineUTF16.count)
         return offset
     }
 
-    /// Line/column pair for a UTF-8 offset.
+    /// Line/column pair for a UTF-16 code unit offset.
     public func lineAndColumn(for offset: Int) -> (line: Int, column: Int)? {
-        guard offset >= 0, offset <= content.utf8.count else { return nil }
+        guard offset >= 0, offset <= content.utf16.count else { return nil }
 
         var lineOffset = 0
         for (index, text) in lines.enumerated() {
-            if offset <= lineOffset + text.utf8.count {
+            let lineLength = text.utf16.count
+            if offset <= lineOffset + lineLength {
                 return (index, offset - lineOffset)
             }
-            lineOffset += text.utf8.count + lineEnding.character.utf8.count
+            lineOffset += lineLength + lineEnding.character.utf16.count
         }
 
         let last = max(0, lines.count - 1)
-        return (last, lines.isEmpty ? 0 : lines[last].utf8.count)
+        return (last, lines.isEmpty ? 0 : lines[last].utf16.count)
     }
 
-    /// An `NSRange` for a UTF-8 offset range.
+    /// An `NSRange` for a UTF-16 offset range.
     public func nsRange(from start: Int, to end: Int) -> NSRange? {
-        guard start >= 0, end >= start, end <= content.utf8.count else { return nil }
+        guard start >= 0, end >= start, end <= content.utf16.count else { return nil }
         return NSRange(location: start, length: end - start)
     }
 

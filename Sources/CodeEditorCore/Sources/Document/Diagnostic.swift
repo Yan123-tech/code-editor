@@ -17,14 +17,16 @@ public enum DocumentDiagnosticSeverity: Int, CaseIterable, Sendable {
 /// Built from the LSP `Diagnostic` by `LSPTextViewCoordinator`; the Core model never
 /// imports the LSP module.
 public struct DocumentDiagnostic: Equatable, Sendable {
-    /// UTF-8 offset range of the diagnostic, matching `Document` offsets.
+    /// Offset range of the diagnostic, matching `Document` offsets.
     public let range: TextSelection
     public let severity: DocumentDiagnosticSeverity
     public let message: String
+    public let source: String?
 
-    public init(range: TextSelection, severity: DocumentDiagnosticSeverity, message: String) {
+    public init(range: TextSelection, severity: DocumentDiagnosticSeverity, message: String, source: String? = nil) {
         self.range = range
         self.severity = severity
         self.message = message
+        self.source = source
     }
 }

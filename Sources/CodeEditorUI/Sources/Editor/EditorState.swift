@@ -17,6 +17,7 @@ public final class EditorState {
     public var showMinimap = false
     public var showFoldingRibbon = true
     public var showInvisibles = false
+    public var formatOnSave = true
 
     // Transient state for the active document
     public private(set) var selectedLines: Set<Int> = []
@@ -105,7 +106,6 @@ public final class EditorState {
 
         let selection = document.selection
         let start = document.lineAndColumn(for: selection.start)
-        let end = document.lineAndColumn(for: selection.end)
 
         if let start {
             caretLine = start.line
