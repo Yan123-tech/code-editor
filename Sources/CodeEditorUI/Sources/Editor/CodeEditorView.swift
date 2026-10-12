@@ -1,12 +1,14 @@
-import CodeEditLanguages
-import CodeEditSourceEditor
-import CodeEditTextView
 import CodeEditorCore
 import CodeEditorThemes
+import CodeEditSourceEditor
+import CodeEditTextView
 import SwiftUI
 
-/// The editing surface: a tree-sitter highlighted source editor with its own line
-/// number gutter, bracket emphasis and undo stack.
+/// Wraps `SourceEditor` from CodeEditSourceEditor, bridging document state and
+/// configuration from `AppState` and `EditorState`.
+///
+/// Selection flows both ways: the document holds the source of truth, `SourceEditor`
+/// updates its cursor on load, and user movements write back via `onChange`.
 public struct CodeEditorView: View {
     @Bindable var document: CodeEditorCore.Document
     let theme: Theme
@@ -14,7 +16,7 @@ public struct CodeEditorView: View {
     let appState: AppState
 
     @State private var sourceEditorState = SourceEditorState()
-    @State private var textCoordinator = DocumentTextCoordinator()
+    @State private var textCoordinator: DocumentTextCoordinator
     @State private var lspCoordinator: LSPTextViewCoordinator
 
     public init(
@@ -27,6 +29,7 @@ public struct CodeEditorView: View {
         self.theme = theme
         self.editorState = editorState
         self.appState = appState
+        _textCoordinator = State(initialValue: DocumentTextCoordinator(document: document))
         _lspCoordinator = State(
             initialValue: LSPTextViewCoordinator(
                 document: document, theme: theme, appState: appState
@@ -53,11 +56,13 @@ public struct CodeEditorView: View {
             // SourceEditor does not diff text on update — only language, configuration
             // and highlight providers. Without this, switching tabs keeps the previous
             // document on screen.
+            textCoordinator.updateDocument(document)
             textCoordinator.reload(text: document.content)
             Task { await lspCoordinator.switchTo(document: document) }
             editorState.syncSelection(of: document)
         }
         .task {
+            textCoordinator.updateDocument(document)
             editorState.syncSelection(of: document)
             await lspCoordinator.switchTo(document: document)
         }
@@ -100,7 +105,8 @@ public struct CodeEditorView: View {
                 showReformattingGuide: false,
                 showFoldingRibbon: editorState.showFoldingRibbon,
                 invisibleCharactersConfiguration: invisibles,
-                warningCharacters: Self.warningCharacters
+                warningCharacters: Self.warningCharacters,
+                codeSuggestionTriggerCharacters: [".", ":", "/", "@", "$", "_"]
             )
         )
     }
@@ -130,7 +136,6 @@ public struct CodeEditorView: View {
         }
     }
 
-    /// Two-way binding between the editor and the document's content.
     private var textBinding: Binding<String> {
         Binding(
             get: { document.content },
@@ -142,7 +147,7 @@ public struct CodeEditorView: View {
         document.undoManager as? CEUndoManager
     }
 
-    // MARK: - Caret tracking
+    // MARK: - Selection sync
 
     /// Translate the editor's 1-indexed cursor positions back into document offsets.
     private func syncSelection(with positions: [CursorPosition]?) {
@@ -154,14 +159,11 @@ public struct CodeEditorView: View {
     }
 
     private func offset(for position: CursorPosition) -> Int? {
+        if position.range != .notFound {
+            return position.range.location
+        }
         let lineIndex = position.start.line - 1
         guard lineIndex >= 0, lineIndex < document.lines.count else { return nil }
-
-        var offset = 0
-        for index in 0..<lineIndex {
-            offset += document.lines[index].utf16.count + document.lineEnding.character.utf16.count
-        }
-        let lineUTF16 = document.lines[lineIndex].utf16
-        return offset + min(max(0, position.start.column - 1), lineUTF16.count)
+        return document.offset(forLine: lineIndex, column: position.start.column - 1)
     }
 }

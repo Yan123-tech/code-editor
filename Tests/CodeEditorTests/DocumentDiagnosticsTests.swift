@@ -41,4 +41,31 @@ struct DocumentDiagnosticsTests {
         #expect(nsRange?.location == start)
         #expect(nsRange?.length == 3)
     }
+
+    @Test("continuous typing flips modified state and allows live diagnostic cycle")
+    func liveTypingAndDiagnosticCycle() {
+        let doc = Document(content: "package main\n\nfunc main() {}\n")
+        #expect(!doc.isModified)
+
+        // Typing random characters marks document modified
+        doc.setContent("package main\n\nfunc main() {\n  asdf\n}\n")
+        #expect(doc.isModified)
+
+        // Live linter emits syntax error diagnostic
+        let errDiag = DocumentDiagnostic(
+            range: TextSelection(start: 31, end: 35),
+            severity: .error,
+            message: "undefined: asdf",
+            source: "gopls"
+        )
+        doc.setDiagnostics([errDiag])
+        #expect(doc.diagnostics.count == 1)
+        #expect(doc.diagnostics.first?.source == "gopls")
+
+        // User resolves the syntax error
+        doc.setContent("package main\n\nfunc main() {\n  println(\"ok\")\n}\n")
+        doc.setDiagnostics([])
+        #expect(doc.diagnostics.isEmpty)
+        #expect(doc.isModified)
+    }
 }

@@ -192,6 +192,7 @@ struct MainWindowView: View {
                 editorState: appState.editorState,
                 appState: appState
             )
+            .id(document.id)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         } else {

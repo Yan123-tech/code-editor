@@ -1,25 +1,33 @@
+import AppKit
+import CodeEditorCore
 import CodeEditSourceEditor
+import CodeEditTextView
 
-/// Keeps the text view's contents in step with the document it is showing.
+/// Keeps the text view's contents in step with the document it is showing and ensures
+/// edits in the text view immediately mark the document modified.
 ///
-/// `SourceEditor` pushes text into its text view exactly once, in
-/// `makeNSViewController`. `updateNSViewController` diffs language, configuration and
-/// highlight providers — **it never diffs the text behind the `Binding<String>`**. Switching
-/// tabs therefore leaves the previously opened document on screen, and every tab shows the
-/// same file.
-///
-/// `prepareCoordinator` is the one hook that hands out the live controller, and it runs once
-/// per controller, so this holds it weakly and `CodeEditorView` calls `reload(text:)` when
-/// the document changes.
-///
-/// This is a workaround for upstream, not a design preference. If a future version diffs the
-/// text on update, this type should go away — see [MEMORY.md](../../../docs/MEMORY.md).
+/// `SourceEditor` pushes text into its text view in `makeNSViewController`.
+/// Conforming to `TextViewDelegate` guarantees that every keystroke or character replacement
+/// immediately updates `Document.content` and sets `isModified = true` synchronously.
 @MainActor
-final class DocumentTextCoordinator: TextViewCoordinator {
+final class DocumentTextCoordinator: TextViewCoordinator, TextViewDelegate {
     private weak var controller: TextViewController?
+    private weak var document: CodeEditorCore.Document?
+
+    init(document: CodeEditorCore.Document? = nil) {
+        self.document = document
+    }
+
+    func updateDocument(_ document: CodeEditorCore.Document) {
+        self.document = document
+    }
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
+    }
+
+    func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
+        document?.setContent(textView.string)
     }
 
     /// Replace the editor's contents, unless it is already showing them.
