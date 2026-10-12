@@ -625,6 +625,7 @@ public final class DocumentManager {
 
     public func activate(_ document: Document) {
         guard documents.contains(where: { $0 === document }) else { return }
+        guard activeDocument !== document else { return }
         activeDocument = document
     }
 

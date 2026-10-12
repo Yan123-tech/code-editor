@@ -125,7 +125,10 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
-        Task { await openIfNeeded() }
+        Task {
+            await openIfNeeded()
+            renderDiagnosticUnderlines(document.diagnostics)
+        }
     }
 
     func destroy() {
@@ -147,18 +150,25 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
             await client.closeDocument(uri: uri)
         }
 
+        clearDiagnosticUnderlines()
         self.document = document
         didOpen = false
         lastCompletionItems = nil
         crashShown = false
         currentURI = nil
-        clearDiagnosticUnderlines()
         await openIfNeeded()
         // If this document had diagnostics from a previous visit, re-render them.
         renderDiagnosticUnderlines(document.diagnostics)
     }
 
     // MARK: - Document sync
+
+    private func matchesCurrentURI(_ uri: String) -> Bool {
+        guard let currentURI else { return false }
+        if uri == currentURI { return true }
+        guard let u1 = URL(string: uri), let u2 = URL(string: currentURI) else { return false }
+        return u1.standardizedFileURL == u2.standardizedFileURL || u1.path == u2.path
+    }
 
     /// `didOpen` on first appearance, for on-disk documents only (untitled docs have no
     /// URI; sourcekit-lsp can't anchor a position to them). Also subscribes to diagnostics
@@ -178,10 +188,21 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         // active document is the common case; switching tabs re-renders from the stored
         // `document.diagnostics`.
         client.onDiagnosticsChanged = { [weak self] serverURI, serverDiagnostics in
-            guard let self, serverURI == currentURI else { return }
+            guard let self else { return }
+            guard self.matchesCurrentURI(serverURI) else { return }
             let converted = self.convertDiagnostics(serverDiagnostics)
             self.document.setDiagnostics(converted)
             self.renderDiagnosticUnderlines(converted)
+        }
+
+        // Render any cached diagnostics the client or document already has
+        let cached = client.diagnostics(for: uri)
+        if !cached.isEmpty {
+            let converted = convertDiagnostics(cached)
+            document.setDiagnostics(converted)
+            renderDiagnosticUnderlines(converted)
+        } else if !document.diagnostics.isEmpty {
+            renderDiagnosticUnderlines(document.diagnostics)
         }
     }
 
