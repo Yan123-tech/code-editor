@@ -47,11 +47,10 @@ public final class AppState {
     public var diagnosticJumpRequest: DiagnosticJumpRequest?
 
     /// Terminal panel height in points, persisted. Drag-resized, never fixed.
-    public var terminalHeight: Double {
-        didSet {
-            guard oldValue != terminalHeight else { return }
-            UserDefaults.standard.set(terminalHeight, forKey: Self.terminalHeightKey)
-        }
+    public var terminalHeight: Double
+
+    public func persistTerminalHeight() {
+        UserDefaults.standard.set(terminalHeight, forKey: Self.terminalHeightKey)
     }
 
     private static let terminalHeightKey = "CodeEditor.terminalHeight"
@@ -108,6 +107,7 @@ public final class AppState {
         disconnectLanguageServers()
         terminal.disconnect()
         terminal.workingDirectory = url
+        terminal.projectRootDirectory = url
         terminal.clear()
         quickOpenIndex.reindex(root: url)
         RecentProjectsStore.record(url: url)
@@ -152,6 +152,7 @@ public final class AppState {
                 fileSystemManager.setRoot(root)
                 quickOpenIndex.reindex(root: root)
                 terminal.workingDirectory = root
+                terminal.projectRootDirectory = root
             } else {
                 SessionStore.clear()
             }
@@ -378,7 +379,7 @@ public final class AppState {
         return fileSystemManager.rootURL
     }
 
-    /// Queue a creation for naming. `directory` nil means `defaultCreateDirectory`.
+    /// Queue a creation for naming. `directory` nil means `defaultCreateDirectory` .
     public func requestCreation(kind: NewItemKind, in directory: URL? = nil) {
         guard let directory = directory ?? defaultCreateDirectory else { return }
         pendingCreation = PendingCreation(kind: kind, directory: directory)
@@ -437,6 +438,7 @@ public final class AppState {
         }
         guard let root = fileSystemManager.rootURL else { return }
         terminal.workingDirectory = root
+        terminal.projectRootDirectory = root
         if !terminal.isConnected {
             terminal.connect()
         }
@@ -457,6 +459,7 @@ public final class AppState {
         }
         guard let root = fileSystemManager.rootURL else { return }
         terminal.workingDirectory = root
+        terminal.projectRootDirectory = root
         if !terminal.isConnected {
             terminal.connect()
         }

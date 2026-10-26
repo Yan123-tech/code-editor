@@ -24,11 +24,8 @@ public struct TerminalView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(terminal.outputLines) { line in
-                            Text(line.text)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(color(for: line.type))
+                            lineView(for: line)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
                                 .id(line.id)
                         }
 
@@ -38,18 +35,33 @@ public struct TerminalView: View {
                     .padding(.horizontal, Metrics.Space.regular)
                     .padding(.vertical, Metrics.Space.compact)
                 }
+                .textSelection(.enabled)
                 .background(theme.chrome.panelBackground.color)
                 .onChange(of: terminal.outputLines.count) { _, _ in
-                    guard terminal.autoScroll else { return }
-                    withAnimation(.linear(duration: 0.05)) {
-                        proxy.scrollTo(inputAnchor, anchor: .bottom)
-                    }
+                    scrollToBottom(proxy: proxy)
                 }
                 .onTapGesture { isInputFocused = true }
             }
         }
         .frame(minHeight: 120)
         .background(theme.chrome.panelBackground.color)
+        .contentShape(Rectangle())
+        .onTapGesture { isInputFocused = true }
+        .overlay {
+            GeometryReader { geometry in
+                Color.clear
+                    .preference(key: TerminalSizePreferenceKey.self, value: geometry.size)
+            }
+        }
+        .onPreferenceChange(TerminalSizePreferenceKey.self) { size in
+            updateTerminalDimensions(size: size)
+        }
+        .onAppear {
+            if !terminal.isConnected {
+                terminal.connect()
+            }
+            isInputFocused = true
+        }
         .focusedSceneValue(\.terminalFocus, isInputFocused)
         .focusedSceneValue(\.terminalInput, Binding(get: { input }, set: { input = $0 }))
         .focusedSceneValue(\.terminalSubmit, submit)
@@ -82,8 +94,19 @@ public struct TerminalView: View {
 
             Spacer(minLength: 0)
 
+            headerButton("Interrupt", icon: "xmark.circle", help: "Send Ctrl-C (SIGINT)") {
+                if !input.isEmpty {
+                    terminal.setInput(input)
+                }
+                input = ""
+                terminal.sendControlC()
+                isInputFocused = true
+            }
+            .disabled(!terminal.isConnected)
+
             headerButton("Clear", icon: "trash", help: "Clear scrollback") {
                 terminal.clear()
+                isInputFocused = true
             }
 
             headerButton(
@@ -93,8 +116,8 @@ public struct TerminalView: View {
             ) {
                 terminal.disconnect()
                 terminal.connect()
+                isInputFocused = true
             }
-            .disabled(terminal.isConnected)
         }
         .padding(.horizontal, Metrics.Space.regular)
         .frame(height: Metrics.Height.panelHeader)
@@ -132,22 +155,87 @@ public struct TerminalView: View {
     }
 
     private var inputLine: some View {
-        HStack(spacing: 0) {
-            Text(terminal.workingDirectory.map { "\($0.lastPathComponent) " } ?? "")
-                .foregroundStyle(theme.secondaryText.color)
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            let promptPath = terminal.formattedPromptPath
+            if !promptPath.isEmpty {
+                Text("\(promptPath) ")
+                    .foregroundStyle(theme.secondaryText.color)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             Text("$ ")
                 .foregroundStyle(theme.chrome.accent.color)
+                .lineLimit(1)
             TextField("", text: $input)
                 .textFieldStyle(.plain)
                 .foregroundColor(theme.text.color)
                 .focused($isInputFocused)
                 .onSubmit(submit)
-                .onExitCommand { input = "" }
+                .onKeyPress(.return) {
+                    submit()
+                    return .handled
+                }
+                .onExitCommand {
+                    input = ""
+                    terminal.setInput("")
+                }
+                .onMoveCommand { direction in
+                    switch direction {
+                    case .up:
+                        input = terminal.recallPrevious()
+                    case .down:
+                        input = terminal.recallNext()
+                    default:
+                        break
+                    }
+                }
         }
         .font(.system(size: 12, design: .monospaced))
     }
 
     private var inputAnchor: String { "terminal-input" }
+
+    // MARK: - Line View
+
+    @ViewBuilder
+    private func lineView(for line: TerminalOutputLine) -> some View {
+        if line.spans.isEmpty {
+            Text(line.text.isEmpty ? " " : line.text)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(color(for: line.type))
+        } else {
+            styledText(for: line)
+                .font(.system(size: 12, design: .monospaced))
+        }
+    }
+
+    private func styledText(for line: TerminalOutputLine) -> Text {
+        line.spans.reduce(Text("")) { current, span in
+            var spanText = Text(span.text)
+            if let fg = span.style.foregroundColor {
+                spanText = spanText.foregroundColor(
+                    Color(red: fg.red, green: fg.green, blue: fg.blue, opacity: fg.alpha)
+                )
+            } else {
+                spanText = spanText.foregroundColor(color(for: line.type))
+            }
+
+            if span.style.isBold {
+                spanText = spanText.bold()
+            }
+            if span.style.isDim {
+                spanText = spanText.foregroundStyle(.secondary)
+            }
+            if span.style.isItalic {
+                spanText = spanText.italic()
+            }
+            if span.style.isUnderline {
+                spanText = spanText.underline()
+            }
+
+            return current + spanText
+        }
+    }
 
     // MARK: - Actions
 
@@ -155,6 +243,23 @@ public struct TerminalView: View {
         let command = input
         input = ""
         terminal.submit(command)
+        isInputFocused = true
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        guard terminal.autoScroll else { return }
+        proxy.scrollTo(inputAnchor, anchor: .bottom)
+    }
+
+    private func updateTerminalDimensions(size: CGSize) {
+        guard size.width > 0 && size.height > 0 else { return }
+        // For a 12pt monospaced font, approx char width is 7.2pt and line height is 15pt.
+        let cols = max(20, Int(size.width / 7.2))
+        let rows = max(5, Int(size.height / 15.0))
+
+        if cols != terminal.cols || rows != terminal.rows {
+            terminal.resize(cols: cols, rows: rows)
+        }
     }
 
     private func color(for type: TerminalOutputType) -> Color {
@@ -163,6 +268,18 @@ public struct TerminalView: View {
         case .errorOutput: theme.semantic.danger.color
         case .info: theme.secondaryText.color
         case .input: theme.chrome.accent.color
+        }
+    }
+}
+
+// MARK: - TerminalSizePreferenceKey
+
+private struct TerminalSizePreferenceKey: PreferenceKey {
+    static let defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let next = nextValue()
+        if next != .zero {
+            value = next
         }
     }
 }
