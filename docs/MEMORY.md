@@ -534,6 +534,31 @@ syntax errors exist.
 
 ---
 
+## 31. Diagnostics Jump & Problems Popover
+
+Status bar error/warning counters anchor a `.popover` with `DiagnosticsListView`. Each
+diagnostic is `Identifiable` with a stable deterministic ID keyed on range, severity, and message.
+To avoid recursive view hierarchy issues, clicking a problem triggers `appState.jumpTo(...)`
+which dispatches a `DiagnosticJumpRequest` with a unique UUID. `CodeEditorView` catches this via
+`.onChange(of: appState.diagnosticJumpRequest)` and delegates to `LSPTextViewCoordinator.jumpTo(range:)`,
+which scrolls the line into view with centering, sets caret selection, and pulses a temporary
+`Emphasis` highlight on the target token.
+
+---
+
+## 32. OpenAI-Compatible AI Autocompletions (Copilot-style)
+
+AI completions are provided via `OpenAIClient` and integrated through `CodeSuggestionDelegate`
+in `LSPTextViewCoordinator`. When `EditorState.completionMode == .ai`, completion queries bypass
+LSP and query the configured OpenAI-compatible endpoint (OpenAI, OpenRouter, Ollama, LM Studio)
+with a 200ms debounce to prevent typing churn. Suggestions conform to `CodeSuggestionEntry`
+with a `sparkles` icon, `AI (model)` badge, and multi-line documentation preview. Trigger
+characters are expanded to include delimiters and operators (`.`, `:`, `/`, `@`, `$`, `_`, `(`,
+`{`, `[`, ` `, `=`, `,`, `;`, `>`, `<`, `\n`), and `cleanCompletionText` removes markdown
+artifacts and duplicate prefix boundary overlaps.
+
+---
+
 ## Quick reference
 
 | Question | Answer |

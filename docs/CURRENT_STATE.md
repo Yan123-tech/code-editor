@@ -1,14 +1,11 @@
 # Current state
 
-Last verified on 2026-10-10, Swift 6.4.0.34.1, macOS 27.0.1. The `feature/lsp-completion`
-and `feature/external-change-detection` branches have been merged into one working branch
-on `main` (748e7ef) and are each green on the local gate.
+Last verified on 2026-10-26, Swift 6.4.0.34.1, macOS 27.0.1. `main` is at commit 1f9dc77.
+Features merged: `feature/diagnostic-panel-jump` (PR #24) and `feature/ai-completion` (PR #25).
 
 ```
 swift build    → Build complete (1 pre-existing warning in EditorState.swift)
-swift test     → 115 tests in 32 suites (114 unit + 1 sourcekit end-to-end, local-only;
-                 2 new `DocumentDiagnosticsTests`); 78 in 18 suites on
-                 `feature/external-change-detection` (73 pre-existing + 5 new)
+swift test     → 132 tests in 35 suites (131 unit + 1 sourcekit end-to-end, local-only), 100% passing
 swift-format lint --strict → 0 warnings
 ```
 
