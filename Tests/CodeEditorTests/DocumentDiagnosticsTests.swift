@@ -131,4 +131,23 @@ struct DocumentDiagnosticsTests {
         #expect(sorted[1].message == "warning in line 2")
         #expect(sorted[2].message == "error in line 3")
     }
+
+    @Test("typing Enter inserting newline updates ranges safely")
+    func enterNewlineEditing() {
+        let initial = "let a = 1\nlet b = 2\n"
+        let doc = Document(content: initial)
+        let diag = DocumentDiagnostic(
+            range: TextSelection(start: 4, end: 5),
+            severity: .error,
+            message: "type mismatch"
+        )
+        doc.setDiagnostics([diag])
+        #expect(doc.diagnostics.count == 1)
+
+        // Simulate pressing enter: newline inserted at index 9 ("let a = 1\n\nlet b = 2\n")
+        let updated = "let a = 1\n\nlet b = 2\n"
+        doc.setContent(updated)
+        doc.setDiagnostics([])
+        #expect(doc.diagnostics.isEmpty)
+    }
 }

@@ -8,6 +8,10 @@ struct CodeEditorApp: App {
     @State private var appState = AppState()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() {
+        NSBezierPath.installSafeBoundsWorkaround()
+    }
+
     var body: some Scene {
         // A single window: AppState is shared and per-window state would fight it.
         // A second window sharing one document set and one sidebar is a bug, not a

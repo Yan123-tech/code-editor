@@ -23,6 +23,16 @@ Real terminal interaction requires allocating a POSIX pseudo-terminal (PTY) pair
 
 ---
 
+## 34. Editor Typing / Enter Crash Prevention & NSBezierPath Safety
+
+In AppKit, calling `-[NSBezierPath bounds]` or `-[NSBezierPath controlPointBounds]` on an empty path (`elementCount == 0`) raises an uncaught Objective-C `NSGenericException` (`No current point for control point bounds`), immediately aborting the process (`SIGABRT`).
+- **CodeEditTextView `EmphasisManager`**: `updateLayerBackgrounds()` queries `shapePath.bounds` to update `textLayer.frame`. When editing text or pressing Enter, line breaks and offsets change before the language server can re-analyze the buffer. Stale emphasis ranges or newline characters (`\n`) yield zero glyph rects (`rectsFor(range:) == []`), producing an empty `NSBezierPath`.
+- **System-Wide Safe Bounds**: `NSBezierPath.installSafeBoundsWorkaround()` swizzles `bounds` and `controlPointBounds` to return `.zero` when empty, eliminating the fatal AppKit exception across the entire app and dependencies.
+- **Immediate Diagnostic Invalidation on Edit**: `LSPTextViewCoordinator` implements `willReplaceContentsIn` and `didReplaceContentsIn` to immediately clear diagnostic underlines and jump emphases (`clearDiagnosticUnderlines()`), clearing stale layout layers before AppKit redraws.
+- **Non-Empty Glyph Rect Validation**: `renderDiagnosticUnderlines` and `jumpTo(range:)` check `layoutManager.rectsFor(range:).isEmpty` before registering `Emphasis`, preventing empty or newline-only ranges from constructing zero-element underline layers.
+
+---
+
 ## Quick reference
 
 | Question | Answer |
@@ -49,3 +59,4 @@ Real terminal interaction requires allocating a POSIX pseudo-terminal (PTY) pair
 | How do I make a settings picker? | Don't use `Picker(selection:)`. See #23. Use `Menu` with `Button`s. |
 | Where do I add a diagnostic severity colour? | `Theme.semantic` — `.danger`, `.warning`, `.success`. Never a syntax token. |
 | Why did interactive terminal programs like `vim` or `top` fail? | #33. They require a POSIX PTY and window resize ioctls (`TIOCSWINSZ`), not Foundation `Pipe`s. |
+| Why did typing or pressing Enter crash in the editor? | #34. `NSBezierPath.bounds` throws on empty path in `EmphasisManager`. Swizzled and cleared on edit. |

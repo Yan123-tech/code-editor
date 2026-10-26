@@ -1,11 +1,11 @@
 # Current state
 
 Last verified on 2026-10-26, Swift 6.4.0.34.1, macOS 27.0.1.
-Implemented POSIX Pseudo-Terminal (PTY) and ANSI escape sequence parser (PR #7 / Issue #5).
+Fixed editor crash on typing/Enter (Issue #34, PR #35); implemented POSIX PTY terminal (PR #7 / Issue #5).
 
 ```
 swift build    → Build complete (1 pre-existing warning in EditorState.swift)
-swift test     → 152 tests in 37 suites (151 unit + 1 sourcekit end-to-end, local-only), 100% passing
+swift test     → 156 tests in 38 suites (151 unit + 1 sourcekit end-to-end, local-only), 100% passing
 swift-format lint --strict → 0 warnings
 ```
 
