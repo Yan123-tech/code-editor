@@ -248,9 +248,7 @@ public struct TerminalView: View {
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
         guard terminal.autoScroll else { return }
-        withAnimation(.linear(duration: 0.05)) {
-            proxy.scrollTo(inputAnchor, anchor: .bottom)
-        }
+        proxy.scrollTo(inputAnchor, anchor: .bottom)
     }
 
     private func updateTerminalDimensions(size: CGSize) {

@@ -336,42 +336,16 @@ struct PTYTerminalTransportTests {
             onTermination: { _ in }
         )
 
-        // Wait for shell to initialize and output its initial prompt
-        let initStart = Date()
-        while Date().timeIntervalSince(initStart) < 1.0 {
-            let hasOutput = outputBox.withLock { !$0.isEmpty }
-            if hasOutput { break }
-            try await Task.sleep(nanoseconds: 50_000_000)
-        }
-
-        // Extra grace period for shell readline initialization
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        // Submit command with carriage return (\r)
-        try transport.write(Data("echo PTY_INTERACTIVE_OK\r".utf8))
-
-        // Wait up to 3 seconds for output to appear
+        // Poll and send command with carriage return until output contains expected response
         let start = Date()
         var matched = false
-        while Date().timeIntervalSince(start) < 3.0 {
+        while Date().timeIntervalSince(start) < 5.0 {
+            try? transport.write(Data("echo PTY_INTERACTIVE_OK\r".utf8))
+            try await Task.sleep(nanoseconds: 150_000_000)
             let outString = outputBox.withLock { String(decoding: $0, as: UTF8.self) }
             if outString.contains("PTY_INTERACTIVE_OK") {
                 matched = true
                 break
-            }
-            try await Task.sleep(nanoseconds: 50_000_000)
-        }
-
-        if !matched {
-            try? transport.write(Data("echo PTY_INTERACTIVE_OK\r".utf8))
-            let retryStart = Date()
-            while Date().timeIntervalSince(retryStart) < 2.0 {
-                let outString = outputBox.withLock { String(decoding: $0, as: UTF8.self) }
-                if outString.contains("PTY_INTERACTIVE_OK") {
-                    matched = true
-                    break
-                }
-                try await Task.sleep(nanoseconds: 50_000_000)
             }
         }
 

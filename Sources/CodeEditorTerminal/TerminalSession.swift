@@ -35,6 +35,8 @@ public final class TerminalSession {
     private var transport: TerminalTransport?
     private let parser: TerminalParser
     private let maxLines = 2000
+    private var resizeTask: Task<Void, Never>?
+    private var lastWorkingDirRefresh = Date.distantPast
 
     public init(
         shellPath: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
@@ -131,6 +133,9 @@ public final class TerminalSession {
     }
 
     public func disconnect() {
+        resizeTask?.cancel()
+        resizeTask = nil
+
         guard let currentTransport = transport else { return }
         currentTransport.terminate()
         transport = nil
@@ -213,7 +218,7 @@ public final class TerminalSession {
             pendingCommandEcho = trimmed
             write(trimmed + "\r")
         }
-        refreshWorkingDirectory()
+        refreshWorkingDirectory(force: true)
     }
 
     public func setInput(_ input: String) {
@@ -253,14 +258,28 @@ public final class TerminalSession {
         transport?.sendInterrupt()
     }
 
-    public func resize(cols: Int, rows: Int) {
+    public func resize(cols: Int, rows: Int, immediate: Bool = false) {
         self.cols = cols
         self.rows = rows
-        transport?.resize(cols: cols, rows: rows)
+
+        resizeTask?.cancel()
+        if immediate {
+            transport?.resize(cols: cols, rows: rows)
+        } else {
+            resizeTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.transport?.resize(cols: cols, rows: rows)
+            }
+        }
     }
 
-    public func refreshWorkingDirectory() {
+    public func refreshWorkingDirectory(force: Bool = false) {
         #if canImport(Darwin)
+            let now = Date()
+            guard force || now.timeIntervalSince(lastWorkingDirRefresh) >= 0.5 else { return }
+            lastWorkingDirRefresh = now
+
             guard let pid = transport?.processIdentifier, pid > 0 else { return }
             var vpi = proc_vnodepathinfo()
             let size = proc_pidinfo(

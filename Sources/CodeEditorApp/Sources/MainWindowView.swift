@@ -7,9 +7,6 @@ import SwiftUI
 struct MainWindowView: View {
     @Bindable var appState: AppState
 
-    /// Terminal height when the current drag began, so the gesture is anchored.
-    @State private var terminalDragStart: Double?
-
     init(appState: AppState) {
         self.appState = appState
     }
@@ -46,9 +43,7 @@ struct MainWindowView: View {
                 }
 
                 if appState.isTerminalVisible {
-                    terminalDivider
-                    TerminalView(terminal: appState.terminal, theme: appState.theme)
-                        .frame(height: appState.terminalHeight)
+                    TerminalContainerView(appState: appState)
                 }
             }
             .background(appState.theme.background.color)
@@ -140,46 +135,6 @@ struct MainWindowView: View {
             )
             .padding(.top, Metrics.Space.spacious)
         }
-    }
-
-    // MARK: - Terminal resize
-
-    /// A drag handle, not a passive hairline: the north-south cursor on hover is
-    /// the affordance, the capsule is the target.
-    private var terminalDivider: some View {
-        Rectangle()
-            .fill(appState.theme.chrome.barBackground.color)
-            .frame(height: Metrics.Height.divider)
-            .overlay {
-                Capsule()
-                    .fill(appState.theme.chrome.border.color)
-                    .frame(width: 56, height: Metrics.Height.dividerIndicator)
-            }
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.resizeUpDown.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        if terminalDragStart == nil {
-                            terminalDragStart = appState.terminalHeight
-                        }
-                        guard let start = terminalDragStart else { return }
-                        appState.terminalHeight = min(
-                            max(start - value.translation.height, 120),
-                            600
-                        )
-                    }
-                    .onEnded { _ in
-                        terminalDragStart = nil
-                        appState.persistTerminalHeight()
-                    }
-            )
     }
 
     // MARK: - Content
@@ -331,6 +286,60 @@ struct MainWindowView: View {
             get: { appState.isSettingsVisible },
             set: { appState.isSettingsVisible = $0 }
         )
+    }
+}
+
+// MARK: - Terminal Container
+
+/// Isolated container for the terminal pane and divider to prevent terminal height changes
+/// during drag resize from invalidating the entire MainWindowView hierarchy.
+private struct TerminalContainerView: View {
+    @Bindable var appState: AppState
+    @State private var lastDragLocationY: CGFloat?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            terminalDivider
+            TerminalView(terminal: appState.terminal, theme: appState.theme)
+                .frame(height: appState.terminalHeight)
+        }
+    }
+
+    /// A drag handle, not a passive hairline: the north-south cursor on hover is
+    /// the affordance, the capsule is the target.
+    private var terminalDivider: some View {
+        Rectangle()
+            .fill(appState.theme.chrome.barBackground.color)
+            .frame(height: Metrics.Height.divider)
+            .overlay {
+                Capsule()
+                    .fill(appState.theme.chrome.border.color)
+                    .frame(width: 56, height: Metrics.Height.dividerIndicator)
+            }
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeUpDown.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let currentY = value.location.y
+                        if let lastY = lastDragLocationY {
+                            let deltaY = currentY - lastY
+                            let newHeight = appState.terminalHeight - Double(deltaY)
+                            appState.terminalHeight = min(max(newHeight, 120), 600)
+                        }
+                        lastDragLocationY = currentY
+                    }
+                    .onEnded { _ in
+                        lastDragLocationY = nil
+                        appState.persistTerminalHeight()
+                    }
+            )
     }
 }
 
