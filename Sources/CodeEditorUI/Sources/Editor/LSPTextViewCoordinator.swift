@@ -173,6 +173,7 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
     // MARK: - TextViewCoordinator
 
     func prepareCoordinator(controller: TextViewController) {
+        NSBezierPath.installSafeBoundsWorkaround()
         self.controller = controller
         installMouseMonitor()
         Task {
@@ -265,10 +266,19 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         }
     }
 
+    func textView(_ textView: TextView, willReplaceContentsIn range: NSRange, with string: String) {
+        closeDiagnosticPopover()
+        clearDiagnosticUnderlines()
+        textView.emphasisManager?.removeEmphases(for: Self.jumpEmphasisGroupId)
+    }
+
     /// Forward a keystroke to the server, debounced so a fast typist sends one
     /// `didChange` per burst instead of one per character.
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         closeDiagnosticPopover()
+        clearDiagnosticUnderlines()
+        textView.emphasisManager?.removeEmphases(for: Self.jumpEmphasisGroupId)
+        document.setDiagnostics([])
         guard controller != nil else { return }
         didChangeTask?.cancel()
         didChangeTask = Task {
@@ -282,6 +292,12 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
             else { return }
             await client.updateDocument(uri: uri, content: textView.string)
         }
+    }
+
+    func textViewDidChangeText(controller: TextViewController) {
+        closeDiagnosticPopover()
+        clearDiagnosticUnderlines()
+        controller.textView.emphasisManager?.removeEmphases(for: Self.jumpEmphasisGroupId)
     }
 
     // MARK: - CodeSuggestionDelegate
@@ -489,13 +505,16 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         tv.scrollToRange(targetRange, center: true)
         tv.window?.makeFirstResponder(tv)
 
-        let jumpEmphasis = Emphasis(
-            range: effectiveRange,
-            style: .standard,
-            flash: true,
-            selectInDocument: true
-        )
-        tv.emphasisManager?.addEmphasis(jumpEmphasis, for: Self.jumpEmphasisGroupId)
+        if let layoutManager = tv.layoutManager,
+           !layoutManager.rectsFor(range: effectiveRange).isEmpty {
+            let jumpEmphasis = Emphasis(
+                range: effectiveRange,
+                style: .standard,
+                flash: true,
+                selectInDocument: true
+            )
+            tv.emphasisManager?.addEmphasis(jumpEmphasis, for: Self.jumpEmphasisGroupId)
+        }
     }
 
     // MARK: - JumpToDefinitionDelegate
@@ -647,6 +666,12 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
             }
 
             guard effectiveRange.length > 0 else { continue }
+
+            // Guard against empty layout rects (e.g. newline or whitespace without glyphs)
+            guard let layoutManager = tv.layoutManager,
+                  !layoutManager.rectsFor(range: effectiveRange).isEmpty else {
+                continue
+            }
 
             let color = diagnosticColor(diag.severity)
             emphases.append(Emphasis(range: effectiveRange, style: .underline(color: color)))
