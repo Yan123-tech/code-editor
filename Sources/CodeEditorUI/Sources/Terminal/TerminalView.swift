@@ -38,10 +38,10 @@ public struct TerminalView: View {
                 }
                 .background(theme.chrome.panelBackground.color)
                 .onChange(of: terminal.outputLines.count) { _, _ in
-                    guard terminal.autoScroll else { return }
-                    withAnimation(.linear(duration: 0.05)) {
-                        proxy.scrollTo(inputAnchor, anchor: .bottom)
-                    }
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: terminal.activeLine?.text) { _, _ in
+                    scrollToBottom(proxy: proxy)
                 }
                 .onTapGesture { isInputFocused = true }
             }
@@ -149,16 +149,32 @@ public struct TerminalView: View {
 
     private var inputLine: some View {
         HStack(spacing: 0) {
-            Text(terminal.workingDirectory.map { "\($0.lastPathComponent) " } ?? "")
-                .foregroundStyle(theme.secondaryText.color)
-            Text("$ ")
-                .foregroundStyle(theme.chrome.accent.color)
+            if let activeLine = terminal.activeLine,
+                !activeLine.text.trimmingCharacters(in: .whitespaces).isEmpty
+            {
+                lineView(for: activeLine)
+            } else {
+                Text(terminal.workingDirectory.map { "\($0.lastPathComponent) " } ?? "")
+                    .foregroundStyle(theme.secondaryText.color)
+                Text("$ ")
+                    .foregroundStyle(theme.chrome.accent.color)
+            }
             TextField("", text: $input)
                 .textFieldStyle(.plain)
                 .foregroundColor(theme.text.color)
                 .focused($isInputFocused)
                 .onSubmit(submit)
                 .onExitCommand { input = "" }
+                .onMoveCommand { direction in
+                    switch direction {
+                    case .up:
+                        input = terminal.recallPrevious()
+                    case .down:
+                        input = terminal.recallNext()
+                    default:
+                        break
+                    }
+                }
         }
         .font(.system(size: 12, design: .monospaced))
     }
@@ -170,7 +186,7 @@ public struct TerminalView: View {
     @ViewBuilder
     private func lineView(for line: TerminalOutputLine) -> some View {
         if line.spans.isEmpty {
-            Text(line.text)
+            Text(line.text.isEmpty ? " " : line.text)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(color(for: line.type))
         } else {
@@ -193,6 +209,9 @@ public struct TerminalView: View {
             if span.style.isBold {
                 spanText = spanText.bold()
             }
+            if span.style.isDim {
+                spanText = spanText.foregroundStyle(.secondary)
+            }
             if span.style.isItalic {
                 spanText = spanText.italic()
             }
@@ -211,6 +230,13 @@ public struct TerminalView: View {
         terminal.submit(command)
     }
 
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        guard terminal.autoScroll else { return }
+        withAnimation(.linear(duration: 0.05)) {
+            proxy.scrollTo(inputAnchor, anchor: .bottom)
+        }
+    }
+
     private func color(for type: TerminalOutputType) -> Color {
         switch type {
         case .standard: theme.text.color
@@ -221,18 +247,20 @@ public struct TerminalView: View {
     }
 
     private func updateTerminalDimensions(size: CGSize) {
-        guard size.width > 0 && size.height > 0 else { return }
-        // For a 12pt monospaced font, approx char width is 7.2pt and line height is 15pt.
-        let cols = max(20, Int(size.width / 7.2))
-        let rows = max(5, Int(size.height / 15.0))
+        let charWidth: CGFloat = 7.2
+        let lineHeight: CGFloat = 16.0
+
+        let cols = max(10, Int(size.width / charWidth))
+        let rows = max(5, Int(size.height / lineHeight))
         terminal.resize(cols: cols, rows: rows)
     }
 }
 
-// MARK: - TerminalSizePreferenceKey
+// MARK: - PreferenceKey for Terminal Size
 
 private struct TerminalSizePreferenceKey: PreferenceKey {
     static let defaultValue: CGSize = .zero
+
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
         let next = nextValue()
         if next != .zero {

@@ -2,8 +2,7 @@ import Foundation
 
 // MARK: - TerminalSession
 
-/// Runs an interactive shell inside a pseudo-terminal (PTY) or fallback pipes,
-/// parsing ANSI escape sequences and streaming styled lines of output.
+/// Runs a shell in a subprocess via a PTY (with Pipe fallback) and streams ANSI-parsed lines.
 @MainActor
 @Observable
 public final class TerminalSession {
@@ -11,6 +10,7 @@ public final class TerminalSession {
     public private(set) var isConnected = false
     public private(set) var connectionError: String?
     public private(set) var outputLines: [TerminalOutputLine] = []
+    public private(set) var activeLine: TerminalOutputLine?
     public private(set) var currentInput = ""
     public var autoScroll = true
 
@@ -131,6 +131,7 @@ public final class TerminalSession {
         for line in remaining {
             appendLine(line)
         }
+        activeLine = nil
         parser.reset()
         isConnected = false
     }
@@ -140,6 +141,7 @@ public final class TerminalSession {
         for line in lines {
             appendLine(line)
         }
+        activeLine = parser.currentActiveLine(as: .standard)
     }
 
     private func handleTermination(_ status: Int32) {
@@ -147,6 +149,7 @@ public final class TerminalSession {
         for line in remaining {
             appendLine(line)
         }
+        activeLine = nil
         parser.reset()
 
         if status != 0 && status != SIGTERM {
@@ -167,7 +170,12 @@ public final class TerminalSession {
 
     public func submit(_ command: String) {
         let trimmed = command.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else {
+            if transport is PTYTerminalTransport {
+                write("\r")
+            }
+            return
+        }
 
         if history.last != trimmed {
             history.append(trimmed)
@@ -177,9 +185,10 @@ public final class TerminalSession {
         // If using pipe transport, manually echo input line
         if transport is PipeTerminalTransport {
             appendLine(TerminalOutputLine(text: "$ \(trimmed)", type: .input))
+            write(trimmed + "\n")
+        } else {
+            write(trimmed + "\r")
         }
-
-        write(trimmed + "\n")
     }
 
     public func setInput(_ input: String) {
@@ -233,6 +242,7 @@ public final class TerminalSession {
 
     public func clear() {
         outputLines.removeAll()
+        activeLine = nil
         parser.reset()
     }
 
@@ -242,8 +252,6 @@ public final class TerminalSession {
     }
 
     private func appendLine(_ line: TerminalOutputLine) {
-        let trimmed = line.text.trimmingCharacters(in: .newlines)
-        guard !trimmed.isEmpty else { return }
         outputLines.append(line)
         if outputLines.count > maxLines {
             outputLines.removeFirst(outputLines.count - maxLines)

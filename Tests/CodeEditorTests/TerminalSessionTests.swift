@@ -178,6 +178,48 @@ struct ANSITerminalParserTests {
         #expect(flushed.count == 1)
         #expect(flushed[0].text == "Partial output without newline")
     }
+
+    @Test("exposes uncommitted prompt in activeLine")
+    func uncommittedActiveLine() {
+        let parser = ANSITerminalParser()
+        let data = Data("user@mac % ".utf8)
+        let immediateLines = parser.feed(data)
+        #expect(immediateLines.isEmpty)
+
+        let active = parser.currentActiveLine()
+        #expect(active != nil)
+        #expect(active?.text == "user@mac % ")
+    }
+
+    @Test("trims trailing unstyled spaces from line on newline")
+    func trailingWhitespaceTrim() {
+        let parser = ANSITerminalParser()
+        let data = Data("Hello World     \n".utf8)
+        let lines = parser.feed(data)
+
+        #expect(lines.count == 1)
+        #expect(lines[0].text == "Hello World")
+    }
+
+    @Test("zsh prompt formatting and inline command overwrite")
+    func zshPromptAndEcho() {
+        let parser = ANSITerminalParser()
+        // Simulate zsh PROMPT_EOL_MARK and prompt
+        let bootData = Data(
+            "%                                                                              \r \r\ryan@mac Code Editor % \u{1B}[?2004h"
+                .utf8)
+        let bootLines = parser.feed(bootData)
+        #expect(bootLines.isEmpty)
+        #expect(parser.currentActiveLine()?.text == "yan@mac Code Editor % ")
+
+        // Simulate user command echo and output
+        let echoData = Data("echo hi\u{1B}[?2004l\r\r\nhi\r\n".utf8)
+        let lines = parser.feed(echoData)
+        #expect(lines.count == 2)
+        #expect(lines[0].text == "yan@mac Code Editor % echo hi")
+        #expect(lines[1].text == "hi")
+        #expect(parser.currentActiveLine() == nil)
+    }
 }
 
 // MARK: - PTYTerminalTransportTests
@@ -218,6 +260,48 @@ struct PTYTerminalTransportTests {
         let outputData = outputBox.withLock { $0 }
         let outputString = String(decoding: outputData, as: UTF8.self)
         #expect(outputString.contains("IS_A_REAL_PTY"))
+    }
+
+    @Test("interactive shell executes command with carriage return")
+    func interactiveShellExecution() async throws {
+        let transport = PTYTerminalTransport()
+        let shURL = URL(fileURLWithPath: "/bin/sh")
+
+        let outputBox = OSAllocatedUnfairLock(initialState: Data())
+
+        try transport.start(
+            executableURL: shURL,
+            arguments: ["-i"],
+            environment: ProcessInfo.processInfo.environment,
+            workingDirectory: nil,
+            cols: 80,
+            rows: 24,
+            onOutput: { data in
+                outputBox.withLock { $0.append(data) }
+            },
+            onTermination: { _ in }
+        )
+
+        // Wait a moment for shell initialization
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        // Submit command with carriage return (\r)
+        try transport.write(Data("echo PTY_INTERACTIVE_OK\r".utf8))
+
+        // Wait up to 3 seconds for output to appear
+        let start = Date()
+        var matched = false
+        while Date().timeIntervalSince(start) < 3.0 {
+            let outString = outputBox.withLock { String(decoding: $0, as: UTF8.self) }
+            if outString.contains("PTY_INTERACTIVE_OK") {
+                matched = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        transport.terminate()
+        #expect(matched)
     }
 
     @Test("resizes window dimensions without error")

@@ -5,6 +5,7 @@ import Foundation
 /// Parses raw terminal byte streams into styled output lines.
 public protocol TerminalParser: AnyObject, Sendable {
     func feed(_ data: Data, as defaultType: TerminalOutputType) -> [TerminalOutputLine]
+    func currentActiveLine(as defaultType: TerminalOutputType) -> TerminalOutputLine?
     func flush(as defaultType: TerminalOutputType) -> [TerminalOutputLine]
     func reset()
 }
@@ -34,27 +35,20 @@ private enum ParserState {
 
 // MARK: - ANSITerminalParser
 
-/// A stateful ANSI escape sequence and control-character parser.
-///
-/// Handles:
-/// - Control characters: `\n` (line feed), `\r` (carriage return overwrite), `\x08`/`\x7F` (backspace), `\t` (tab).
-/// - ANSI CSI SGR formatting: bold, dim, italic, underline, standard 8/16 colors, 256 colors, and 24-bit RGB truecolor.
-/// - ANSI CSI line editing: `\e[K` (erase to end), `\e[1K` (erase to start), `\e[2K` (erase line).
-/// - Cursor movements (`\e[C`, `\e[D`, `\e[H`).
-/// - Graceful handling of OSC, charset sequences, and fragmented data packets.
+/// Thread-safe, stateful terminal emulator engine parsing ANSI escape sequences and control characters.
 public final class ANSITerminalParser: TerminalParser, @unchecked Sendable {
     private let lock = NSLock()
-    private var state: ParserState = .normal
     private var cells: [TerminalCell] = []
     private var cursorColumn: Int = 0
-    private var currentStyle: TerminalStyle = .default
     private var savedCursorColumn: Int = 0
+    private var currentStyle: TerminalStyle = .default
+    private var state: ParserState = .normal
 
-    private let maxLineLength = 8192
+    private let maxLineLength = 2000
 
     public init() {}
 
-    // MARK: - TerminalParser Implementation
+    // MARK: - TerminalParser Protocol
 
     public func feed(_ data: Data, as defaultType: TerminalOutputType = .standard) -> [TerminalOutputLine] {
         lock.lock()
@@ -72,16 +66,49 @@ public final class ANSITerminalParser: TerminalParser, @unchecked Sendable {
         return outputLines
     }
 
+    public func currentActiveLine(as defaultType: TerminalOutputType = .standard) -> TerminalOutputLine? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !cells.isEmpty else { return nil }
+        let effectiveCells: [TerminalCell]
+        if cursorColumn > 0 && cursorColumn <= cells.count {
+            effectiveCells = Array(cells[0..<cursorColumn])
+        } else if cursorColumn == 0 {
+            return nil
+        } else {
+            effectiveCells = cells
+        }
+
+        let line = buildLine(from: effectiveCells, defaultType: defaultType)
+        if line.text.trimmingCharacters(in: .whitespaces).isEmpty {
+            return nil
+        }
+        return line
+    }
+
     public func flush(as defaultType: TerminalOutputType = .standard) -> [TerminalOutputLine] {
         lock.lock()
         defer { lock.unlock() }
 
         if !cells.isEmpty {
-            let line = buildLine(from: cells, defaultType: defaultType)
+            var committedCells = cells
+            if cursorColumn > 0 && cursorColumn <= cells.count {
+                committedCells = Array(cells[0..<cursorColumn])
+            }
+            while let last = committedCells.last,
+                last.character == " ",
+                last.style.backgroundColor == nil
+            {
+                committedCells.removeLast()
+            }
+            let line = buildLine(from: committedCells, defaultType: defaultType)
             cells.removeAll()
             cursorColumn = 0
             state = .normal
-            return [line]
+            if !line.text.trimmingCharacters(in: .whitespaces).isEmpty {
+                return [line]
+            }
         }
         return []
     }
@@ -141,8 +168,15 @@ public final class ANSITerminalParser: TerminalParser, @unchecked Sendable {
         outputLines: inout [TerminalOutputLine]
     ) {
         switch char {
-        case "\n":
-            let line = buildLine(from: cells, defaultType: defaultType)
+        case "\n", "\r\n":
+            var committedCells = cells
+            while let last = committedCells.last,
+                last.character == " ",
+                last.style.backgroundColor == nil
+            {
+                committedCells.removeLast()
+            }
+            let line = buildLine(from: committedCells, defaultType: defaultType)
             outputLines.append(line)
             cells.removeAll()
             cursorColumn = 0
