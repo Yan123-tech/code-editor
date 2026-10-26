@@ -24,9 +24,7 @@ public struct TerminalView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(terminal.outputLines) { line in
-                            Text(line.text)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(color(for: line.type))
+                            lineView(for: line)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                                 .id(line.id)
@@ -50,6 +48,20 @@ public struct TerminalView: View {
         }
         .frame(minHeight: 120)
         .background(theme.chrome.panelBackground.color)
+        .overlay {
+            GeometryReader { geometry in
+                Color.clear
+                    .preference(key: TerminalSizePreferenceKey.self, value: geometry.size)
+            }
+        }
+        .onPreferenceChange(TerminalSizePreferenceKey.self) { size in
+            updateTerminalDimensions(size: size)
+        }
+        .onAppear {
+            if !terminal.isConnected {
+                terminal.connect()
+            }
+        }
         .focusedSceneValue(\.terminalFocus, isInputFocused)
         .focusedSceneValue(\.terminalInput, Binding(get: { input }, set: { input = $0 }))
         .focusedSceneValue(\.terminalSubmit, submit)
@@ -82,6 +94,11 @@ public struct TerminalView: View {
 
             Spacer(minLength: 0)
 
+            headerButton("Interrupt", icon: "xmark.circle", help: "Send Ctrl-C (SIGINT)") {
+                terminal.sendControlC()
+            }
+            .disabled(!terminal.isConnected)
+
             headerButton("Clear", icon: "trash", help: "Clear scrollback") {
                 terminal.clear()
             }
@@ -94,7 +111,6 @@ public struct TerminalView: View {
                 terminal.disconnect()
                 terminal.connect()
             }
-            .disabled(terminal.isConnected)
         }
         .padding(.horizontal, Metrics.Space.regular)
         .frame(height: Metrics.Height.panelHeader)
@@ -149,6 +165,44 @@ public struct TerminalView: View {
 
     private var inputAnchor: String { "terminal-input" }
 
+    // MARK: - Line View
+
+    @ViewBuilder
+    private func lineView(for line: TerminalOutputLine) -> some View {
+        if line.spans.isEmpty {
+            Text(line.text)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(color(for: line.type))
+        } else {
+            styledText(for: line)
+                .font(.system(size: 12, design: .monospaced))
+        }
+    }
+
+    private func styledText(for line: TerminalOutputLine) -> Text {
+        line.spans.reduce(Text("")) { current, span in
+            var spanText = Text(span.text)
+            if let fg = span.style.foregroundColor {
+                spanText = spanText.foregroundColor(
+                    Color(red: fg.red, green: fg.green, blue: fg.blue, opacity: fg.alpha)
+                )
+            } else {
+                spanText = spanText.foregroundColor(color(for: line.type))
+            }
+
+            if span.style.isBold {
+                spanText = spanText.bold()
+            }
+            if span.style.isItalic {
+                spanText = spanText.italic()
+            }
+            if span.style.isUnderline {
+                spanText = spanText.underline()
+            }
+            return current + spanText
+        }
+    }
+
     // MARK: - Actions
 
     private func submit() {
@@ -163,6 +217,26 @@ public struct TerminalView: View {
         case .errorOutput: theme.semantic.danger.color
         case .info: theme.secondaryText.color
         case .input: theme.chrome.accent.color
+        }
+    }
+
+    private func updateTerminalDimensions(size: CGSize) {
+        guard size.width > 0 && size.height > 0 else { return }
+        // For a 12pt monospaced font, approx char width is 7.2pt and line height is 15pt.
+        let cols = max(20, Int(size.width / 7.2))
+        let rows = max(5, Int(size.height / 15.0))
+        terminal.resize(cols: cols, rows: rows)
+    }
+}
+
+// MARK: - TerminalSizePreferenceKey
+
+private struct TerminalSizePreferenceKey: PreferenceKey {
+    static let defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let next = nextValue()
+        if next != .zero {
+            value = next
         }
     }
 }

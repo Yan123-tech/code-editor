@@ -1,36 +1,9 @@
 import Foundation
 
-// MARK: - TerminalOutputType
-
-/// Types of terminal output, used for coloring.
-public enum TerminalOutputType: Sendable {
-    case standard
-    case errorOutput
-    case info
-    case input
-}
-
-// MARK: - TerminalOutputLine
-
-/// A single line of terminal output.
-public struct TerminalOutputLine: Identifiable, Equatable, Sendable {
-    public let id: UUID
-    public let text: String
-    public let type: TerminalOutputType
-
-    public init(id: UUID = UUID(), text: String, type: TerminalOutputType) {
-        self.id = id
-        self.text = text
-        self.type = type
-    }
-}
-
 // MARK: - TerminalSession
 
-/// Runs a shell in a subprocess and streams its output as lines of text.
-///
-/// Note: this drives the shell over pipes rather than a PTY, so it behaves like a
-/// pipe-driven shell (no job control, no terminal echo). Input is echoed locally.
+/// Runs an interactive shell inside a pseudo-terminal (PTY) or fallback pipes,
+/// parsing ANSI escape sequences and streaming styled lines of output.
 @MainActor
 @Observable
 public final class TerminalSession {
@@ -49,37 +22,32 @@ public final class TerminalSession {
     public var shellPath: String
     public var workingDirectory: URL?
     public var environment: [String: String]
+    public var cols: Int = 80
+    public var rows: Int = 24
 
-    // Subprocess plumbing
-    private var process: Process?
-    private var inputHandle: FileHandle?
-    private var buffer = Data()
-
+    // Plumbing
+    private var transport: TerminalTransport?
+    private let parser: TerminalParser
     private let maxLines = 2000
 
     public init(
         shellPath: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
-        workingDirectory: URL? = nil
+        workingDirectory: URL? = nil,
+        parser: TerminalParser = ANSITerminalParser()
     ) {
         self.shellPath = shellPath
         self.workingDirectory = workingDirectory
         self.environment = [:]
+        self.parser = parser
     }
 
     // MARK: - Lifecycle
 
     public func connect() {
-        guard process == nil else { return }
+        guard transport == nil else { return }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: shellPath)
-        process.arguments = ["-i"]
-        if let workingDirectory {
-            process.currentDirectoryURL = workingDirectory
-        }
-
-        var environment = ProcessInfo.processInfo.environment
-        let currentPath = environment["PATH"] ?? ""
+        var env = ProcessInfo.processInfo.environment
+        let currentPath = env["PATH"] ?? ""
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let extraPaths = [
             "\(home)/go/bin",
@@ -90,63 +58,104 @@ public final class TerminalSession {
             "/bin",
         ]
         let newPath = (extraPaths + [currentPath]).filter { !$0.isEmpty }.joined(separator: ":")
-        environment["PATH"] = newPath
+        env["PATH"] = newPath
         for (key, value) in self.environment {
-            environment[key] = value
+            env[key] = value
         }
-        process.environment = environment
 
-        let input = Pipe()
-        let output = Pipe()
-        let error = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = error
+        let executableURL = URL(fileURLWithPath: shellPath)
+        let arguments = ["-i"]
 
+        // Attempt PTY first; fallback to Pipe if PTY allocation fails
+        let ptyTransport = PTYTerminalTransport()
         do {
-            try process.run()
+            try ptyTransport.start(
+                executableURL: executableURL,
+                arguments: arguments,
+                environment: env,
+                workingDirectory: workingDirectory,
+                cols: cols,
+                rows: rows,
+                onOutput: { [weak self] data in
+                    Task { @MainActor [weak self] in
+                        self?.handleIncomingData(data)
+                    }
+                },
+                onTermination: { [weak self] status in
+                    Task { @MainActor [weak self] in
+                        self?.handleTermination(status)
+                    }
+                }
+            )
+            self.transport = ptyTransport
+            self.isConnected = true
+            self.connectionError = nil
         } catch {
-            connectionError = error.localizedDescription
-            isConnected = false
-            return
-        }
-
-        self.process = process
-        self.inputHandle = input.fileHandleForWriting
-        isConnected = true
-        connectionError = nil
-
-        read(output.fileHandleForReading, as: .standard)
-        read(error.fileHandleForReading, as: .errorOutput)
-        process.terminationHandler = { [weak self] finished in
-            Task { @MainActor [weak self] in
-                self?.handleTermination(finished.terminationStatus)
+            // PTY failed, try Pipe fallback
+            let pipeTransport = PipeTerminalTransport()
+            do {
+                try pipeTransport.start(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    environment: env,
+                    workingDirectory: workingDirectory,
+                    cols: cols,
+                    rows: rows,
+                    onOutput: { [weak self] data in
+                        Task { @MainActor [weak self] in
+                            self?.handleIncomingData(data)
+                        }
+                    },
+                    onTermination: { [weak self] status in
+                        Task { @MainActor [weak self] in
+                            self?.handleTermination(status)
+                        }
+                    }
+                )
+                self.transport = pipeTransport
+                self.isConnected = true
+                self.connectionError = nil
+            } catch {
+                self.connectionError = error.localizedDescription
+                self.isConnected = false
             }
         }
     }
 
     public func disconnect() {
-        guard let process else { return }
-        process.terminationHandler = nil
-        if process.isRunning {
-            process.terminate()
+        guard let currentTransport = transport else { return }
+        currentTransport.terminate()
+        transport = nil
+
+        let remaining = parser.flush(as: .standard)
+        for line in remaining {
+            appendLine(line)
         }
-        try? inputHandle?.close()
-        inputHandle = nil
-        self.process = nil
-        buffer.removeAll()
+        parser.reset()
         isConnected = false
     }
 
+    private func handleIncomingData(_ data: Data) {
+        let lines = parser.feed(data, as: .standard)
+        for line in lines {
+            appendLine(line)
+        }
+    }
+
     private func handleTermination(_ status: Int32) {
+        let remaining = parser.flush(as: Self.outputType(for: status))
+        for line in remaining {
+            appendLine(line)
+        }
+        parser.reset()
+
         if status != 0 && status != SIGTERM {
             connectionError = "Shell exited with status \(status)"
         }
-        outputLines.append(
+        appendLine(
             TerminalOutputLine(text: "[process exited]", type: Self.outputType(for: status))
         )
-        process = nil
-        inputHandle = nil
+        transport = nil
         isConnected = false
     }
 
@@ -157,13 +166,20 @@ public final class TerminalSession {
     // MARK: - Input
 
     public func submit(_ command: String) {
-        let command = command.trimmingCharacters(in: .whitespaces)
-        guard !command.isEmpty else { return }
+        let trimmed = command.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
 
-        if history.last != command { history.append(command) }
+        if history.last != trimmed {
+            history.append(trimmed)
+        }
         historyIndex = nil
-        append(.input, "$ \(command)")
-        write(command + "\n")
+
+        // If using pipe transport, manually echo input line
+        if transport is PipeTerminalTransport {
+            appendLine(TerminalOutputLine(text: "$ \(trimmed)", type: .input))
+        }
+
+        write(trimmed + "\n")
     }
 
     public func setInput(_ input: String) {
@@ -192,16 +208,22 @@ public final class TerminalSession {
     }
 
     public func sendControlC() {
-        write("\u{03}")
+        transport?.sendInterrupt()
+    }
+
+    public func resize(cols: Int, rows: Int) {
+        self.cols = cols
+        self.rows = rows
+        transport?.resize(cols: cols, rows: rows)
     }
 
     private func write(_ string: String) {
-        guard let inputHandle else {
+        guard let transport else {
             connectionError = "Not connected to a shell."
             return
         }
         do {
-            try inputHandle.write(contentsOf: Data(string.utf8))
+            try transport.write(Data(string.utf8))
         } catch {
             connectionError = error.localizedDescription
         }
@@ -211,45 +233,18 @@ public final class TerminalSession {
 
     public func clear() {
         outputLines.removeAll()
+        parser.reset()
     }
 
     /// Append a line of output. Exposed for tests that do not spawn a real shell.
     public func appendForTesting(_ type: TerminalOutputType, _ text: String) {
-        append(type, text)
+        appendLine(TerminalOutputLine(text: text, type: type))
     }
 
-    private func read(_ handle: FileHandle, as type: TerminalOutputType) {
-        handle.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let self else { return }
-            Task { @MainActor [weak self] in
-                self?.ingest(data, as: type)
-            }
-        }
-    }
-
-    private func ingest(_ data: Data, as type: TerminalOutputType) {
-        buffer.append(data)
-        // Keep only the trailing partial line; complete lines are flushed below.
-        while let newlineIndex = buffer.firstIndex(of: 0x0A) {
-            let lineData = buffer[buffer.startIndex..<newlineIndex]
-            buffer = buffer[buffer.index(after: newlineIndex)...]
-            let line = String(decoding: lineData, as: UTF8.self).trimmingCharacters(in: .newlines)
-            append(type, line)
-        }
-
-        // Guard against a runaway stream with no newlines.
-        if buffer.count > 1 << 20 {
-            let flushed = String(decoding: buffer, as: UTF8.self)
-            buffer.removeAll()
-            append(type, flushed)
-        }
-    }
-
-    private func append(_ type: TerminalOutputType, _ text: String) {
-        let line = text.trimmingCharacters(in: .newlines)
-        guard !line.isEmpty else { return }
-        outputLines.append(TerminalOutputLine(text: line, type: type))
+    private func appendLine(_ line: TerminalOutputLine) {
+        let trimmed = line.text.trimmingCharacters(in: .newlines)
+        guard !trimmed.isEmpty else { return }
+        outputLines.append(line)
         if outputLines.count > maxLines {
             outputLines.removeFirst(outputLines.count - maxLines)
         }
