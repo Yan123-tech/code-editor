@@ -177,6 +177,7 @@ struct MainWindowView: View {
                     }
                     .onEnded { _ in
                         terminalDragStart = nil
+                        appState.persistTerminalHeight()
                     }
             )
     }

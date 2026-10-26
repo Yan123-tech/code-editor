@@ -42,6 +42,7 @@ public enum TerminalTransportError: LocalizedError, Sendable {
 /// Low-level transport abstraction for driving a subprocess via a PTY or fallback Pipes.
 public protocol TerminalTransport: AnyObject, Sendable {
     var isRunning: Bool { get }
+    var processIdentifier: Int32? { get }
 
     func start(
         executableURL: URL,
@@ -77,6 +78,12 @@ public final class PTYTerminalTransport: TerminalTransport, @unchecked Sendable 
         return process?.isRunning ?? false
     }
 
+    public var processIdentifier: Int32? {
+        lock.lock()
+        defer { lock.unlock() }
+        return process?.processIdentifier
+    }
+
     public func start(
         executableURL: URL,
         arguments: [String],
@@ -98,29 +105,31 @@ public final class PTYTerminalTransport: TerminalTransport, @unchecked Sendable 
             throw TerminalTransportError.ptyAllocationFailed(errno)
         }
 
+        // 2. Grant permissions & unlock slave
         guard grantpt(master) == 0 else {
             close(master)
             throw TerminalTransportError.grantptFailed(errno)
         }
-
         guard unlockpt(master) == 0 else {
             close(master)
             throw TerminalTransportError.unlockptFailed(errno)
         }
 
-        guard let slaveNamePtr = ptsname(master) else {
+        // 3. Obtain slave path
+        guard let slavePathPtr = ptsname(master) else {
             close(master)
             throw TerminalTransportError.ptsnameFailed
         }
+        let slavePath = String(cString: slavePathPtr)
 
-        let slavePath = String(cString: slaveNamePtr)
+        // 4. Open slave descriptor
         let slave = open(slavePath, O_RDWR | O_NOCTTY)
         guard slave >= 0 else {
             close(master)
             throw TerminalTransportError.slaveOpenFailed(errno)
         }
 
-        // 2. Set initial terminal dimensions
+        // 5. Initial window size
         var ws = winsize()
         ws.ws_col = UInt16(max(10, cols))
         ws.ws_row = UInt16(max(5, rows))
@@ -128,69 +137,78 @@ public final class PTYTerminalTransport: TerminalTransport, @unchecked Sendable 
         ws.ws_ypixel = 0
         _ = ioctl(master, TIOCSWINSZ, &ws)
 
-        // 3. Configure subprocess
+        masterFD = master
+        let masterHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
+        self.masterHandle = masterHandle
+
+        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
+
         let proc = Process()
         proc.executableURL = executableURL
         proc.arguments = arguments
+        proc.standardInput = slaveHandle
+        proc.standardOutput = slaveHandle
+        proc.standardError = slaveHandle
+
+        var env = environment
+        env["TERM"] = "xterm-256color"
+        env["COLORTERM"] = "truecolor"
+        env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
+        proc.environment = env
+
         if let workingDirectory {
             proc.currentDirectoryURL = workingDirectory
         }
 
-        var processEnv = environment
-        if processEnv["TERM"] == nil {
-            processEnv["TERM"] = "xterm-256color"
+        proc.terminationHandler = { [weak self] p in
+            self?.handleProcessTermination()
+            onTermination(p.terminationStatus)
         }
-        if processEnv["COLORTERM"] == nil {
-            processEnv["COLORTERM"] = "truecolor"
-        }
-        proc.environment = processEnv
-
-        // Wrap slave FD in FileHandle for the child process.
-        // Once proc.run() executes, the child duplicates stdin/stdout/stderr.
-        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
-        proc.standardInput = slaveHandle
-        proc.standardOutput = slaveHandle
-        proc.standardError = slaveHandle
 
         do {
             try proc.run()
         } catch {
             close(master)
+            close(slave)
+            masterFD = -1
+            self.masterHandle = nil
             throw TerminalTransportError.processLaunchFailed(error.localizedDescription)
         }
 
-        let masterHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
-        self.masterFD = master
-        self.masterHandle = masterHandle
+        // In Darwin, closing the parent's copy of the slave descriptor post-spawn
+        // ensures EOF is reliably delivered to the master when the child process exits.
+        try? slaveHandle.close()
+
         self.process = proc
 
-        // Read output from PTY master
-        masterHandle.readabilityHandler = { handle in
+        masterHandle.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-            } else {
-                onOutput(data)
+            guard !data.isEmpty else {
+                self?.handleProcessTermination()
+                return
             }
+            onOutput(data)
         }
+    }
 
-        proc.terminationHandler = { [weak self] process in
-            guard let self else { return }
-            self.lock.lock()
-            self.masterHandle?.readabilityHandler = nil
-            self.lock.unlock()
-            onTermination(process.terminationStatus)
+    private func handleProcessTermination() {
+        lock.lock()
+        guard isRunning else {
+            lock.unlock()
+            return
         }
+        masterHandle?.readabilityHandler = nil
+        lock.unlock()
     }
 
     public func write(_ data: Data) throws {
         lock.lock()
         defer { lock.unlock() }
 
-        guard masterFD >= 0, let masterHandle else {
+        guard let handle = masterHandle else {
             throw TerminalTransportError.notConnected
         }
-        try masterHandle.write(contentsOf: data)
+        try handle.write(contentsOf: data)
     }
 
     public func resize(cols: Int, rows: Int) {
@@ -261,6 +279,12 @@ public final class PipeTerminalTransport: TerminalTransport, @unchecked Sendable
         return process?.isRunning ?? false
     }
 
+    public var processIdentifier: Int32? {
+        lock.lock()
+        defer { lock.unlock() }
+        return process?.processIdentifier
+    }
+
     public func start(
         executableURL: URL,
         arguments: [String],
@@ -285,17 +309,11 @@ public final class PipeTerminalTransport: TerminalTransport, @unchecked Sendable
         let input = Pipe()
         let output = Pipe()
         let error = Pipe()
+
         proc.standardInput = input
         proc.standardOutput = output
         proc.standardError = error
 
-        do {
-            try proc.run()
-        } catch {
-            throw TerminalTransportError.processLaunchFailed(error.localizedDescription)
-        }
-
-        self.process = proc
         self.inputHandle = input.fileHandleForWriting
         self.outputHandle = output.fileHandleForReading
         self.errorHandle = error.fileHandleForReading
@@ -305,21 +323,18 @@ public final class PipeTerminalTransport: TerminalTransport, @unchecked Sendable
             guard !data.isEmpty else { return }
             onOutput(data)
         }
-
         errorHandle?.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
             onOutput(data)
         }
 
-        proc.terminationHandler = { [weak self] process in
-            guard let self else { return }
-            self.lock.lock()
-            self.outputHandle?.readabilityHandler = nil
-            self.errorHandle?.readabilityHandler = nil
-            self.lock.unlock()
-            onTermination(process.terminationStatus)
+        proc.terminationHandler = { p in
+            onTermination(p.terminationStatus)
         }
+
+        try proc.run()
+        self.process = proc
     }
 
     public func write(_ data: Data) throws {
@@ -333,16 +348,15 @@ public final class PipeTerminalTransport: TerminalTransport, @unchecked Sendable
     }
 
     public func resize(cols: Int, rows: Int) {
-        // Pipes do not support window size ioctls
+        // Pipes do not have window size attributes
     }
 
     public func sendInterrupt() {
         lock.lock()
         defer { lock.unlock() }
 
-        _ = try? inputHandle?.write(contentsOf: Data([0x03]))
-        if let pid = process?.processIdentifier, pid > 0 {
-            kill(pid, SIGINT)
+        if let proc = process, proc.isRunning {
+            proc.interrupt()
         }
     }
 
@@ -352,11 +366,7 @@ public final class PipeTerminalTransport: TerminalTransport, @unchecked Sendable
 
         outputHandle?.readabilityHandler = nil
         errorHandle?.readabilityHandler = nil
-        if let process, process.isRunning {
-            process.terminationHandler = nil
-            process.terminate()
-        }
-        try? inputHandle?.close()
+        process?.terminate()
         inputHandle = nil
         outputHandle = nil
         errorHandle = nil

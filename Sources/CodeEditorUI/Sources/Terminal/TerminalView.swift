@@ -26,7 +26,6 @@ public struct TerminalView: View {
                         ForEach(terminal.outputLines) { line in
                             lineView(for: line)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
                                 .id(line.id)
                         }
 
@@ -36,6 +35,7 @@ public struct TerminalView: View {
                     .padding(.horizontal, Metrics.Space.regular)
                     .padding(.vertical, Metrics.Space.compact)
                 }
+                .textSelection(.enabled)
                 .background(theme.chrome.panelBackground.color)
                 .onChange(of: terminal.outputLines.count) { _, _ in
                     scrollToBottom(proxy: proxy)
@@ -45,6 +45,8 @@ public struct TerminalView: View {
         }
         .frame(minHeight: 120)
         .background(theme.chrome.panelBackground.color)
+        .contentShape(Rectangle())
+        .onTapGesture { isInputFocused = true }
         .overlay {
             GeometryReader { geometry in
                 Color.clear
@@ -58,6 +60,7 @@ public struct TerminalView: View {
             if !terminal.isConnected {
                 terminal.connect()
             }
+            isInputFocused = true
         }
         .focusedSceneValue(\.terminalFocus, isInputFocused)
         .focusedSceneValue(\.terminalInput, Binding(get: { input }, set: { input = $0 }))
@@ -97,11 +100,13 @@ public struct TerminalView: View {
                 }
                 input = ""
                 terminal.sendControlC()
+                isInputFocused = true
             }
             .disabled(!terminal.isConnected)
 
             headerButton("Clear", icon: "trash", help: "Clear scrollback") {
                 terminal.clear()
+                isInputFocused = true
             }
 
             headerButton(
@@ -111,6 +116,7 @@ public struct TerminalView: View {
             ) {
                 terminal.disconnect()
                 terminal.connect()
+                isInputFocused = true
             }
         }
         .padding(.horizontal, Metrics.Space.regular)
@@ -150,10 +156,9 @@ public struct TerminalView: View {
 
     private var inputLine: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
-            if let folderName = terminal.workingDirectory?.lastPathComponent,
-                !folderName.isEmpty
-            {
-                Text("\(folderName) ")
+            let promptPath = terminal.formattedPromptPath
+            if !promptPath.isEmpty {
+                Text("\(promptPath) ")
                     .foregroundStyle(theme.secondaryText.color)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -166,6 +171,10 @@ public struct TerminalView: View {
                 .foregroundColor(theme.text.color)
                 .focused($isInputFocused)
                 .onSubmit(submit)
+                .onKeyPress(.return) {
+                    submit()
+                    return .handled
+                }
                 .onExitCommand {
                     input = ""
                     terminal.setInput("")
@@ -234,6 +243,7 @@ public struct TerminalView: View {
         let command = input
         input = ""
         terminal.submit(command)
+        isInputFocused = true
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {

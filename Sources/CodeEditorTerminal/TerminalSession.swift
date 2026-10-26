@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(Darwin)
+    import Darwin
+#endif
+
 // MARK: - TerminalSession
 
 /// Runs a shell in a subprocess via a PTY (with Pipe fallback) and streams ANSI-parsed lines.
@@ -22,9 +26,10 @@ public final class TerminalSession {
     // Configuration
     public var shellPath: String
     public var workingDirectory: URL?
+    public var projectRootDirectory: URL?
     public var environment: [String: String]
-    public var cols: Int = 80
-    public var rows: Int = 24
+    @ObservationIgnored public private(set) var cols: Int = 80
+    @ObservationIgnored public private(set) var rows: Int = 24
 
     // Plumbing
     private var transport: TerminalTransport?
@@ -34,10 +39,12 @@ public final class TerminalSession {
     public init(
         shellPath: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         workingDirectory: URL? = nil,
+        projectRootDirectory: URL? = nil,
         parser: TerminalParser = ANSITerminalParser()
     ) {
         self.shellPath = shellPath
         self.workingDirectory = workingDirectory
+        self.projectRootDirectory = projectRootDirectory ?? workingDirectory
         self.environment = [:]
         self.parser = parser
     }
@@ -139,6 +146,7 @@ public final class TerminalSession {
     }
 
     private func handleIncomingData(_ data: Data) {
+        refreshWorkingDirectory()
         let lines = parser.feed(data, as: .standard)
         for line in lines {
             if let pending = pendingCommandEcho,
@@ -179,9 +187,14 @@ public final class TerminalSession {
     // MARK: - Input
 
     public func submit(_ command: String) {
+        if !isConnected {
+            connect()
+        }
+
         let trimmed = command.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             if transport is PTYTerminalTransport {
+                pendingCommandEcho = nil
                 appendLine(TerminalOutputLine(text: "\(promptPrefix)$", type: .input))
                 write("\r")
             }
@@ -200,6 +213,7 @@ public final class TerminalSession {
             pendingCommandEcho = trimmed
             write(trimmed + "\r")
         }
+        refreshWorkingDirectory()
     }
 
     public func setInput(_ input: String) {
@@ -245,8 +259,91 @@ public final class TerminalSession {
         transport?.resize(cols: cols, rows: rows)
     }
 
+    public func refreshWorkingDirectory() {
+        #if canImport(Darwin)
+            guard let pid = transport?.processIdentifier, pid > 0 else { return }
+            var vpi = proc_vnodepathinfo()
+            let size = proc_pidinfo(
+                pid,
+                PROC_PIDVNODEPATHINFO,
+                0,
+                &vpi,
+                Int32(MemoryLayout<proc_vnodepathinfo>.size)
+            )
+            guard size == MemoryLayout<proc_vnodepathinfo>.size else { return }
+            let path = withUnsafePointer(to: &vpi.pvi_cdir.vip_path) { ptr in
+                ptr.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { cstr in
+                    String(cString: cstr)
+                }
+            }
+            guard !path.isEmpty else { return }
+            let newURL = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+            let currentURL = workingDirectory?.standardizedFileURL.resolvingSymlinksInPath()
+            if currentURL?.path != newURL.path {
+                workingDirectory = newURL
+            }
+        #endif
+    }
+
+    public var formattedPromptPath: String {
+        Self.compactPath(currentURL: workingDirectory, rootURL: projectRootDirectory)
+    }
+
+    public static func compactPath(currentURL: URL?, rootURL: URL?) -> String {
+        guard let currentURL else { return "" }
+        let currentStandard = currentURL.standardizedFileURL.resolvingSymlinksInPath()
+
+        if let rootURL {
+            let rootStandard = rootURL.standardizedFileURL.resolvingSymlinksInPath()
+            let rootName =
+                rootStandard.lastPathComponent.isEmpty ? "project" : rootStandard.lastPathComponent
+
+            if currentStandard.path == rootStandard.path {
+                return rootName
+            }
+
+            let rootPrefix =
+                rootStandard.path.hasSuffix("/") ? rootStandard.path : rootStandard.path + "/"
+            if currentStandard.path.hasPrefix(rootPrefix) {
+                let relative = String(currentStandard.path.dropFirst(rootPrefix.count))
+                let components = relative.split(separator: "/").map { String($0) }
+                if components.count <= 2 {
+                    return "\(rootName)/\(components.joined(separator: "/"))"
+                } else {
+                    return "\(rootName)/…/\(components.last!)"
+                }
+            }
+        }
+
+        // Outside rootURL: check if within user's home directory
+        let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
+            .resolvingSymlinksInPath().path
+        let homePrefix = homePath.hasSuffix("/") ? homePath : homePath + "/"
+
+        if currentStandard.path == homePath {
+            return "~"
+        } else if currentStandard.path.hasPrefix(homePrefix) {
+            let relative = String(currentStandard.path.dropFirst(homePrefix.count))
+            let components = relative.split(separator: "/").map { String($0) }
+            if components.count <= 2 {
+                return "~/\(components.joined(separator: "/"))"
+            } else {
+                return "~/…/\(components.last!)"
+            }
+        }
+
+        // System/other directory
+        let components = currentStandard.path.split(separator: "/").map { String($0) }
+        if components.count <= 2 {
+            return currentStandard.path
+        } else {
+            return "/…/\(components.last ?? "")"
+        }
+    }
+
     private var promptPrefix: String {
-        workingDirectory.map { "\($0.lastPathComponent) " } ?? ""
+        let path = formattedPromptPath
+        return path.isEmpty ? "" : "\(path) "
     }
 
     private func write(_ string: String) {

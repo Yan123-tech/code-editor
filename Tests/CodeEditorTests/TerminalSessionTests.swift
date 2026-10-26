@@ -72,6 +72,38 @@ struct TerminalSessionTests {
         #expect(session.outputLines.last?.text == "^C")
         #expect(session.outputLines.last?.type == .info)
     }
+
+    @Test("compactPath renders project root name at root level")
+    func compactPathAtRoot() {
+        let root = URL(fileURLWithPath: "/Users/yan/Projects/MyApp")
+        let compact = TerminalSession.compactPath(currentURL: root, rootURL: root)
+        #expect(compact == "MyApp")
+    }
+
+    @Test("compactPath renders shallow subdirectory relative to project root")
+    func compactPathShallowSubdir() {
+        let root = URL(fileURLWithPath: "/Users/yan/Projects/MyApp")
+        let sub = URL(fileURLWithPath: "/Users/yan/Projects/MyApp/Sources/Core")
+        let compact = TerminalSession.compactPath(currentURL: sub, rootURL: root)
+        #expect(compact == "MyApp/Sources/Core")
+    }
+
+    @Test("compactPath truncates deep subdirectory relative to project root")
+    func compactPathDeepSubdir() {
+        let root = URL(fileURLWithPath: "/Users/yan/Projects/MyApp")
+        let sub = URL(fileURLWithPath: "/Users/yan/Projects/MyApp/Sources/FeatureA/Sub/Deep")
+        let compact = TerminalSession.compactPath(currentURL: sub, rootURL: root)
+        #expect(compact == "MyApp/…/Deep")
+    }
+
+    @Test("compactPath handles directory outside project root")
+    func compactPathOutsideRoot() {
+        let root = URL(fileURLWithPath: "/Users/yan/Projects/MyApp")
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let outside = home.appendingPathComponent("Downloads")
+        let compact = TerminalSession.compactPath(currentURL: outside, rootURL: root)
+        #expect(compact == "~/Downloads")
+    }
 }
 
 // MARK: - ANSITerminalParserTests
@@ -304,7 +336,15 @@ struct PTYTerminalTransportTests {
             onTermination: { _ in }
         )
 
-        // Wait a moment for shell initialization
+        // Wait for shell to initialize and output its initial prompt
+        let initStart = Date()
+        while Date().timeIntervalSince(initStart) < 1.0 {
+            let hasOutput = outputBox.withLock { !$0.isEmpty }
+            if hasOutput { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        // Extra grace period for shell readline initialization
         try await Task.sleep(nanoseconds: 100_000_000)
 
         // Submit command with carriage return (\r)
@@ -320,6 +360,19 @@ struct PTYTerminalTransportTests {
                 break
             }
             try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        if !matched {
+            try? transport.write(Data("echo PTY_INTERACTIVE_OK\r".utf8))
+            let retryStart = Date()
+            while Date().timeIntervalSince(retryStart) < 2.0 {
+                let outString = outputBox.withLock { String(decoding: $0, as: UTF8.self) }
+                if outString.contains("PTY_INTERACTIVE_OK") {
+                    matched = true
+                    break
+                }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
         }
 
         transport.terminate()
