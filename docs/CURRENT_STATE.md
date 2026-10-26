@@ -5,7 +5,7 @@ Implemented POSIX Pseudo-Terminal (PTY) and ANSI escape sequence parser (PR #7 /
 
 ```
 swift build    → Build complete (1 pre-existing warning in EditorState.swift)
-swift test     → 143 tests in 37 suites (142 unit + 1 sourcekit end-to-end, local-only), 100% passing
+swift test     → 152 tests in 37 suites (151 unit + 1 sourcekit end-to-end, local-only), 100% passing
 swift-format lint --strict → 0 warnings
 ```
 
@@ -30,7 +30,7 @@ The window was rebuilt around native macOS chrome. The design tokens live in
 | **Empty state** | One, in the canvas. With a workspace open it points at the sidebar; without one it offers Open Folder as the single prominent action. |
 | **Find/replace** | ⌘F opens CodeEdit's own panel through `SourceEditorState.findPanelVisible`. |
 | **Quick open** | ⌘P over a bounded filesystem index. Matched characters are emphasised. |
-| **Terminal** | Drag-resized 120–600pt, persisted. Driven by a genuine POSIX PTY with ANSI SGR color/style support, CR overwrite, TIOCSWINSZ window resize, and SIGINT process forwarding. |
+| **Terminal** | Drag-resized 120–600pt, persisted on drag end. Driven by a genuine POSIX PTY with ANSI SGR color/style support, CR overwrite, debounced TIOCSWINSZ window resize, live child shell CWD tracking (proc_pidinfo), compact repo prompt path, and SIGINT process group forwarding. |
 | **Session** | Workspace root, open tabs and active tab restore on launch. |
 | **Autocompletion & AI** | User can choose between Language Server (LSP) and AI completions in Settings. Supports any OpenAI-compatible API (OpenAI, OpenRouter, Ollama, LM Studio), with dynamic model fetching/search chooser, Copilot-style suggestions with sparkles icon, and Tab insertion. |
 
@@ -64,8 +64,10 @@ with fallback to pipes. Line-buffered and cell-based scrollback capped at 2000 l
 history on ↑/↓. Full ANSI escape sequence support: carriage return (`\r`) in-place overwriting
 for spinners and progress bars, backspace (`\x08`/`\x7F`), tab stop alignment, ANSI SGR styling
 (bold, dim, italic, underline), 16 standard/bright colors, 256 indexed colors, and 24-bit RGB
-truecolor. Propagates window dimensions via `ioctl(TIOCSWINSZ)` to reflow full-screen CLI apps
-(`top`, `vim`, `nano`), and forwards `SIGINT` directly to the foreground process group on Ctrl-C.
+truecolor. Propagates window dimensions via debounced `ioctl(TIOCSWINSZ)` (120ms) to reflow full-screen
+CLI apps (`top`, `vim`, `nano`) without redraw thrashing during drag, tracks child shell working directory
+live via Darwin kernel `proc_pidinfo(PROC_PIDVNODEPATHINFO)`, formats compact prompt paths relative to
+the repository root, and forwards `SIGINT` directly to the foreground process group on Ctrl-C.
 
 **Themes.** Dark, Light, High Contrast. Selection persists to `UserDefaults`, along with
 font size, tab width, word wrap, minimap, folding ribbon and invisibles.
@@ -80,7 +82,7 @@ discards; Cancel stays.
 
 **Commands.** ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ⌃`, ⇧⌘L, ⌘,. All wired; none are empty closures.
 
-**Tests.** 143 swift-testing cases in 37 suites (142 unit + 1 sourcekit end-to-end, local-only).
+**Tests.** 152 swift-testing cases in 37 suites (151 unit + 1 sourcekit end-to-end, local-only).
 `FileSystemManager` and `QuickOpenIndex` are tested against in-memory providers, so no
 non-LSP test touches the real disk; the LSP transport, parser, and completions are covered by
 dedicated suites (see table below).
