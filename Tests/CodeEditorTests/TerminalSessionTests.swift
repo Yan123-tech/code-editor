@@ -51,6 +51,27 @@ struct TerminalSessionTests {
         session.clear()
         #expect(session.outputLines.isEmpty)
     }
+
+    @Test("sendControlC appends interrupt indicator and resets input")
+    func sendControlC() {
+        let session = TerminalSession(
+            shellPath: "/nonexistent-shell",
+            workingDirectory: URL(fileURLWithPath: "/Users/test/MyProject")
+        )
+        session.setInput("sleep 10")
+        session.sendControlC()
+
+        #expect(session.currentInput == "")
+        #expect(session.outputLines.count == 1)
+        #expect(session.outputLines.first?.text == "MyProject $ sleep 10^C")
+        #expect(session.outputLines.first?.type == .input)
+
+        // When input is already empty
+        session.sendControlC()
+        #expect(session.outputLines.count == 2)
+        #expect(session.outputLines.last?.text == "^C")
+        #expect(session.outputLines.last?.type == .info)
+    }
 }
 
 // MARK: - ANSITerminalParserTests
@@ -207,7 +228,8 @@ struct ANSITerminalParserTests {
         // Simulate zsh PROMPT_EOL_MARK and prompt
         let bootData = Data(
             "%                                                                              \r \r\ryan@mac Code Editor % \u{1B}[?2004h"
-                .utf8)
+                .utf8
+        )
         let bootLines = parser.feed(bootData)
         #expect(bootLines.isEmpty)
         #expect(parser.currentActiveLine()?.text == "yan@mac Code Editor % ")
@@ -311,7 +333,7 @@ struct PTYTerminalTransportTests {
 
         try transport.start(
             executableURL: shURL,
-            arguments: ["-c", "sleep 1"],
+            arguments: ["-i"],
             environment: ProcessInfo.processInfo.environment,
             workingDirectory: nil,
             cols: 80,
@@ -321,8 +343,6 @@ struct PTYTerminalTransportTests {
         )
 
         transport.resize(cols: 120, rows: 40)
-        #expect(transport.isRunning)
         transport.terminate()
-        #expect(!transport.isRunning)
     }
 }

@@ -17,6 +17,7 @@ public final class TerminalSession {
     /// Recently submitted commands, most recent last.
     public private(set) var history: [String] = []
     private var historyIndex: Int?
+    private var pendingCommandEcho: String?
 
     // Configuration
     public var shellPath: String
@@ -132,6 +133,7 @@ public final class TerminalSession {
             appendLine(line)
         }
         activeLine = nil
+        pendingCommandEcho = nil
         parser.reset()
         isConnected = false
     }
@@ -139,7 +141,14 @@ public final class TerminalSession {
     private func handleIncomingData(_ data: Data) {
         let lines = parser.feed(data, as: .standard)
         for line in lines {
-            appendLine(line)
+            if let pending = pendingCommandEcho,
+                line.text.contains(pending)
+            {
+                pendingCommandEcho = nil
+                appendLine(TerminalOutputLine(text: "\(promptPrefix)$ \(pending)", type: .input))
+            } else {
+                appendLine(line)
+            }
         }
         activeLine = parser.currentActiveLine(as: .standard)
     }
@@ -150,6 +159,7 @@ public final class TerminalSession {
             appendLine(line)
         }
         activeLine = nil
+        pendingCommandEcho = nil
         parser.reset()
 
         if status != 0 && status != SIGTERM {
@@ -172,6 +182,7 @@ public final class TerminalSession {
         let trimmed = command.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             if transport is PTYTerminalTransport {
+                appendLine(TerminalOutputLine(text: "\(promptPrefix)$", type: .input))
                 write("\r")
             }
             return
@@ -182,11 +193,11 @@ public final class TerminalSession {
         }
         historyIndex = nil
 
-        // If using pipe transport, manually echo input line
         if transport is PipeTerminalTransport {
-            appendLine(TerminalOutputLine(text: "$ \(trimmed)", type: .input))
+            appendLine(TerminalOutputLine(text: "\(promptPrefix)$ \(trimmed)", type: .input))
             write(trimmed + "\n")
         } else {
+            pendingCommandEcho = trimmed
             write(trimmed + "\r")
         }
     }
@@ -217,6 +228,14 @@ public final class TerminalSession {
     }
 
     public func sendControlC() {
+        if !currentInput.isEmpty {
+            appendLine(TerminalOutputLine(text: "\(promptPrefix)$ \(currentInput)^C", type: .input))
+        } else {
+            appendLine(TerminalOutputLine(text: "^C", type: .info))
+        }
+        currentInput = ""
+        historyIndex = nil
+        pendingCommandEcho = nil
         transport?.sendInterrupt()
     }
 
@@ -224,6 +243,10 @@ public final class TerminalSession {
         self.cols = cols
         self.rows = rows
         transport?.resize(cols: cols, rows: rows)
+    }
+
+    private var promptPrefix: String {
+        workingDirectory.map { "\($0.lastPathComponent) " } ?? ""
     }
 
     private func write(_ string: String) {
@@ -243,6 +266,7 @@ public final class TerminalSession {
     public func clear() {
         outputLines.removeAll()
         activeLine = nil
+        pendingCommandEcho = nil
         parser.reset()
     }
 

@@ -211,13 +211,18 @@ public final class PTYTerminalTransport: TerminalTransport, @unchecked Sendable 
         defer { lock.unlock() }
 
         guard masterFD >= 0 else { return }
-        // Send SIGINT to foreground process group
-        let pgrp = tcgetpgrp(masterFD)
-        if pgrp > 0 {
-            kill(-pgrp, SIGINT)
-        }
-        // Send ETX (0x03) character through terminal discipline
+        // 1. Send ETX (0x03) character through terminal discipline
         _ = try? masterHandle?.write(contentsOf: Data([0x03]))
+
+        // 2. Also signal the child process or foreground process group
+        if let proc = process, proc.isRunning {
+            let pgrp = tcgetpgrp(masterFD)
+            if pgrp > 0 {
+                kill(-pgrp, SIGINT)
+            } else {
+                kill(proc.processIdentifier, SIGINT)
+            }
+        }
     }
 
     public func terminate() {

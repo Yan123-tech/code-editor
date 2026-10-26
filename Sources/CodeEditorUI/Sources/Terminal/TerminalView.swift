@@ -40,9 +40,6 @@ public struct TerminalView: View {
                 .onChange(of: terminal.outputLines.count) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
-                .onChange(of: terminal.activeLine?.text) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
                 .onTapGesture { isInputFocused = true }
             }
         }
@@ -95,6 +92,10 @@ public struct TerminalView: View {
             Spacer(minLength: 0)
 
             headerButton("Interrupt", icon: "xmark.circle", help: "Send Ctrl-C (SIGINT)") {
+                if !input.isEmpty {
+                    terminal.setInput(input)
+                }
+                input = ""
                 terminal.sendControlC()
             }
             .disabled(!terminal.isConnected)
@@ -148,23 +149,27 @@ public struct TerminalView: View {
     }
 
     private var inputLine: some View {
-        HStack(spacing: 0) {
-            if let activeLine = terminal.activeLine,
-                !activeLine.text.trimmingCharacters(in: .whitespaces).isEmpty
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            if let folderName = terminal.workingDirectory?.lastPathComponent,
+                !folderName.isEmpty
             {
-                lineView(for: activeLine)
-            } else {
-                Text(terminal.workingDirectory.map { "\($0.lastPathComponent) " } ?? "")
+                Text("\(folderName) ")
                     .foregroundStyle(theme.secondaryText.color)
-                Text("$ ")
-                    .foregroundStyle(theme.chrome.accent.color)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+            Text("$ ")
+                .foregroundStyle(theme.chrome.accent.color)
+                .lineLimit(1)
             TextField("", text: $input)
                 .textFieldStyle(.plain)
                 .foregroundColor(theme.text.color)
                 .focused($isInputFocused)
                 .onSubmit(submit)
-                .onExitCommand { input = "" }
+                .onExitCommand {
+                    input = ""
+                    terminal.setInput("")
+                }
                 .onMoveCommand { direction in
                     switch direction {
                     case .up:
@@ -218,6 +223,7 @@ public struct TerminalView: View {
             if span.style.isUnderline {
                 spanText = spanText.underline()
             }
+
             return current + spanText
         }
     }
@@ -237,6 +243,17 @@ public struct TerminalView: View {
         }
     }
 
+    private func updateTerminalDimensions(size: CGSize) {
+        guard size.width > 0 && size.height > 0 else { return }
+        // For a 12pt monospaced font, approx char width is 7.2pt and line height is 15pt.
+        let cols = max(20, Int(size.width / 7.2))
+        let rows = max(5, Int(size.height / 15.0))
+
+        if cols != terminal.cols || rows != terminal.rows {
+            terminal.resize(cols: cols, rows: rows)
+        }
+    }
+
     private func color(for type: TerminalOutputType) -> Color {
         switch type {
         case .standard: theme.text.color
@@ -245,22 +262,12 @@ public struct TerminalView: View {
         case .input: theme.chrome.accent.color
         }
     }
-
-    private func updateTerminalDimensions(size: CGSize) {
-        let charWidth: CGFloat = 7.2
-        let lineHeight: CGFloat = 16.0
-
-        let cols = max(10, Int(size.width / charWidth))
-        let rows = max(5, Int(size.height / lineHeight))
-        terminal.resize(cols: cols, rows: rows)
-    }
 }
 
-// MARK: - PreferenceKey for Terminal Size
+// MARK: - TerminalSizePreferenceKey
 
 private struct TerminalSizePreferenceKey: PreferenceKey {
     static let defaultValue: CGSize = .zero
-
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
         let next = nextValue()
         if next != .zero {
