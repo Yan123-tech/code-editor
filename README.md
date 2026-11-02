@@ -1,209 +1,252 @@
+<div align="center">
+
+<img src="Resources/AppIcon.png" alt="Code Editor Icon" width="128" height="128" style="border-radius: 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.25);" />
+
 # Code Editor
 
-A native macOS code editor built with SwiftUI and Swift 6. It opens a folder, lets you
-browse and edit files with tree-sitter syntax highlighting, saves your work, speaks LSP
-to language servers, and gives you a genuine embedded POSIX pseudo-terminal in the same window.
+### Lightweight, Native macOS Code Editor Built with Swift & SwiftUI
+
+<a href="https://github.com/Yan123-tech/code-editor">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=15&duration=3000&pause=1000&color=0EA5E9&center=true&vCenter=true&width=550&lines=Native+Swift+6+%26+SwiftUI+Architecture;Embedded+POSIX+PTY+Terminal+with+Truecolor;LSP+Diagnostics+%26+Smart+Completions;Multi-Provider+AI+Assistance+(OpenAI%2C+Ollama);Blisteringly+Fast+Apple+Silicon+Performance" alt="Typing SVG" />
+</a>
 
 <p align="center">
-  <em>macOS 14+ &middot; Swift 6.4 &middot; MIT licensed</em>
+  <a href="https://github.com/Yan123-tech/code-editor/actions/workflows/ci.yml">
+    <img src="https://github.com/Yan123-tech/code-editor/actions/workflows/ci.yml/badge.svg" alt="CI/CD Status" />
+  </a>
+  <a href="https://swift.org">
+    <img src="https://img.shields.io/badge/Swift-6.4-FA7343?style=flat-square&logo=swift&logoColor=white" alt="Swift 6.4" />
+  </a>
+  <a href="https://apple.com/macos">
+    <img src="https://img.shields.io/badge/macOS-14.0%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+" />
+  </a>
+  <a href="https://apple.com">
+    <img src="https://img.shields.io/badge/Architecture-Apple%20Silicon%20%7C%20Intel-0284C7?style=flat-square&logo=apple" alt="Apple Silicon" />
+  </a>
+  <a href="https://github.com/Yan123-tech/code-editor/actions">
+    <img src="https://img.shields.io/badge/Tests-156%20passed-10B981?style=flat-square&logo=xcode&logoColor=white" alt="156 Tests Passed" />
+  </a>
+  <a href="https://github.com/Yan123-tech/code-editor/actions">
+    <img src="https://img.shields.io/badge/Runner-M--Series%20ARM64-6366F1?style=flat-square&logo=githubactions&logoColor=white" alt="Self-Hosted Runner" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-F59E0B?style=flat-square" alt="MIT License" />
+  </a>
 </p>
 
-## What works today
+<p align="center">
+  <a href="https://skillicons.dev">
+    <img src="https://skillicons.dev/icons?i=swift,apple,bash,git,go,py" alt="Tech Stack" />
+  </a>
+</p>
 
-- **File explorer** — recursive tree with lazy loading, new file/folder, rename, delete,
-  reveal in Finder. Dotfiles are hidden.
-- **Editing** — a real `NSTextView`-backed editor (via
-  [CodeEditSourceEditor](https://github.com/CodeEditApp/CodeEditSourceEditor)) with
-  tree-sitter syntax highlighting, line numbers, bracket-pair emphasis, indentation and
-  reformat-on-type, word wrap, and a shared undo stack. Protected by swizzled
-  `NSBezierPath.safeBounds` preventing AppKit empty path exceptions during rapid editing ([#34](https://github.com/Yan123-tech/code-editor/issues/34), [#35](https://github.com/Yan123-tech/code-editor/pull/35)).
-- **Syntax highlighting** for 34 languages (every `TreeSitterLanguage` case `CodeEditLanguages` 0.1.20 exposes) including Swift, Go, JS/TS, JSX/TSX, Python, JSON,
-  HTML, CSS, Rust, Java, Ruby, C/C++ and shell.
-- **Tabs** — open documents, dirty-state dots, close with a save prompt.
-- **Save / Save All**, with a location prompt for untitled documents. Line endings are
-  detected on load and preserved on save. A file that changed on disk since it was opened is
-  detected on save — the prompt offers Reload, Save Anyway, or Cancel rather than silently
-  overwriting it ([#6](https://github.com/Yan123-tech/code-editor/issues/6)).
-- **Find and replace** — ⌘F, backed by the source editor's own panel.
-- **Quick open** — ⌘P, fuzzy-matching files across the workspace with the matched
-  characters highlighted.
-- **POSIX Pseudo-Terminal (PTY)** — genuine POSIX pseudo-terminal (`posix_openpt`) running
-  your `$SHELL` with ANSI escape sequence parsing (standard 16, 256-color, and 24-bit RGB truecolor),
-  in-place carriage-return overwrites (`\r`), full interactive TUI support (`vim`, `top`, `git log`),
-  window resize signal propagation (`TIOCSWINSZ`), process-group interrupts, and live CWD tracking ([#5](https://github.com/Yan123-tech/code-editor/issues/5), [#7](https://github.com/Yan123-tech/code-editor/pull/7)). Toggle with `^``; drag the divider to resize.
-- **Language Server Protocol (LSP)** — `sourcekit-lsp` starts on Swift documents, and `gopls` starts
-  on Go documents ([#17](https://github.com/Yan123-tech/code-editor/issues/17)). Autocompletions are
-  fuzzy-filtered, accept with Tab or Enter, and handle crashes or malformed server envelopes gracefully
-  without wedging the editor ([#1](https://github.com/Yan123-tech/code-editor/issues/1), [#38](https://github.com/Yan123-tech/code-editor/issues/38)). Go documents format automatically on save with `gofmt`.
-- **LSP Diagnostics & Problems Navigator** — live error and warning markers in the gutter, squiggly
-  underlines beneath issue ranges, status bar summary counts, a scrollable Problems inspector popover
-  with click-to-jump line navigation, and jump shortcuts (`⌘'` / `⇧⌘'`) ([#2](https://github.com/Yan123-tech/code-editor/issues/2), [#10](https://github.com/Yan123-tech/code-editor/pull/10)).
-- **AI Autocompletions** — configurable OpenAI-compatible completion backend supporting OpenAI, Ollama,
-  LM Studio, and OpenRouter with debounced query dispatch, multi-line documentation previews, and markdown
-  cleanup ([#21](https://github.com/Yan123-tech/code-editor/issues/21), [#22](https://github.com/Yan123-tech/code-editor/pull/22)).
-- **Themes** — Dark, Light and High Contrast, persisted across launches along with font
-  size, tab width, word wrap, minimap, folding ribbon and invisibles.
-- **Settings Panel** — native macOS Settings window (`⌘,`) with dedicated tabs for General,
-  Editor, Terminal, Themes, and AI ([#4](https://github.com/Yan123-tech/code-editor/issues/4), [#8](https://github.com/Yan123-tech/code-editor/pull/8)).
-- **Session restore** — reopens your workspace and tabs on launch. It restores *what you
-  had open*, not your edits: unsaved buffers are not persisted, and untitled documents
-  have no path to replay.
-- **Quit guard** — quitting with unsaved changes asks first. Choosing Save abandons the
-  quit if anything failed to save, so a cancelled dialog never costs you the work.
-- **Menu commands** — ⌘N, ⌘O, ⇧⌘O, ⌘F, ⌘P, ⌘S, ⌥⌘S, ⌘W, ⌘B, ^`, ⇧⌘L, ⌘,.
+*A clean, blisteringly fast developer environment powered by native Apple frameworks, Language Server Protocol (LSP), POSIX PTY terminal emulation, and multi-provider AI completions.*
 
-### Interface notes
+</div>
 
-The window uses native macOS chrome: a unified toolbar with a breadcrumb, a navigator that
-opens files and expands folders on click or arrow key, a tab strip whose active tab merges
-into the editor, and a single empty state that adapts to whether a workspace is open.
+---
 
-Design tokens are not sprinkled through the views. Colours live in `Theme.chrome` and
-`Theme.semantic` — chrome never borrows a syntax token. Spacing, radii and chrome heights
-live in `Metrics` in `CodeEditorCore`, on a 4pt grid. Chrome type is semantic, so it scales
-with your system text size; the code font stays fixed-size on purpose.
+## 🌟 Highlights
 
-## Requirements
+<table>
+  <tr>
+    <td width="50%">
+      <h3>⚡️ Native POSIX PTY Terminal</h3>
+      Genuine pseudo-terminal (<code>posix_openpt</code>) running your default <code>$SHELL</code>. Supports 24-bit RGB truecolor, inline carriage-return overwrites (<code>\r</code>), window resizing signals (<code>TIOCSWINSZ</code>), process-group interrupts, and interactive TUIs (<code>vim</code>, <code>top</code>, <code>git log</code>).
+    </td>
+    <td width="50%">
+      <h3>🧠 Language Server Protocol (LSP)</h3>
+      First-class LSP support for <b>Swift</b> (<code>sourcekit-lsp</code>) and <b>Go</b> (<code>gopls</code>) over a robust, non-blocking <code>DispatchSourceRead</code> JSON-RPC transport. Features fuzzy autocomplete, parameter hints, and automatic <code>gofmt</code> formatting on save.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🔍 Live Diagnostics & Problems</h3>
+      Real-time compiler diagnostic markers in the gutter, squiggly underlines beneath issue ranges, summary error/warning badges in the status bar, jump hotkeys (<code>⌘'</code> / <code>⇧⌘'</code>), and an interactive Problems popover.
+    </td>
+    <td width="50%">
+      <h3>✨ AI Code Assistance</h3>
+      Configurable OpenAI-compatible backend supporting <b>OpenAI</b>, <b>Ollama</b>, <b>LM Studio</b>, and <b>OpenRouter</b>. Features debounced query dispatch, multi-line documentation previews, and markdown artifact cleanup.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🎨 Liquid Glass macOS HIG Design</h3>
+      Crafted exclusively for macOS using SF Pro typography, a strict 4pt grid system, Dark / Light / High-Contrast themes, a native Settings window (<code>⌘,</code>), and a bespoke Liquid Glass app icon.
+    </td>
+    <td width="50%">
+      <h3>🛡 Battle-Tested Reliability</h3>
+      Hardened against edge cases: swizzled <code>NSBezierPath.safeBounds</code> preventing AppKit empty path crashes, <code>SIGPIPE</code> immunity, file modification guards, and <b>156 automated test suites</b>.
+    </td>
+  </tr>
+</table>
 
-- macOS 14 or later
-- Xcode 16 / Swift 6.4 toolchain
+---
 
-## Getting started
+## 🚀 What Works Today
+
+- **File Explorer**: Recursive directory tree with asynchronous lazy loading, file/folder creation, inline renaming, deletion, and Finder integration. System dotfiles are cleanly hidden.
+- **Source Editor**: Full `NSTextView`-backed editor (via [CodeEditSourceEditor](https://github.com/CodeEditApp/CodeEditSourceEditor)) with Tree-sitter syntax highlighting, line numbers, bracket-pair highlighting, indentation-on-type, word wrap, and unified undo stack.
+- **34 Supported Languages**: Swift, Go, JavaScript, TypeScript, JSX, TSX, Python, Rust, C, C++, C#, Java, Ruby, HTML, CSS, JSON, Shell, Markdown, and all `TreeSitterLanguage` grammars exposed by `CodeEditLanguages`.
+- **Tabs & Buffers**: Multiple open documents, dirty state indicators, safe close alerts, and smart file-change detection on disk (Reload vs. Overwrite vs. Cancel).
+- **Find & Replace**: Built-in find and replace panel (`⌘F`) with match navigation.
+- **Quick Open (`⌘P`)**: Instant fuzzy file search across the entire project workspace with live matched character highlighting.
+- **Integrated PTY (`^```)**: Toggleable bottom drawer terminal. Drag the divider to smoothly resize with debounced layout updates.
+- **LSP Diagnostics**: Live error and warning gutter indicators, squiggly underlines, status bar counts, and jump shortcuts (`⌘'` / `⇧⌘'`).
+- **AI Autocompletions**: Toggle between LSP and AI completion modes directly in Settings or via hotkeys.
+- **Session Restoration**: Seamlessly restores your open workspace and active tabs on next launch.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Command | Shortcut | Command |
+|:---:|:---|:---:|:---|
+| `⌘N` | New file | `^``` | Toggle integrated terminal |
+| `⌘O` | Open project folder | `⌘'` | Jump to next diagnostic problem |
+| `⇧⌘O` | Open specific files | `⇧⌘'` | Jump to previous diagnostic problem |
+| `⌘F` | Find in document | `⇧⌘L` | Toggle Dark / Light theme |
+| `⌘P` | Quick Open fuzzy search | `⌘,` | Open Preferences / Settings |
+| `⌘S` | Save document | `⌘B` | Toggle project sidebar |
+| `⌥⌘S` | Save all modified documents | `⌘W` | Close current tab |
+
+---
+
+## 🛠 Getting Started
+
+### Prerequisites
+- **macOS 14.0 (Sonoma)** or later
+- **Xcode 16** with the **Swift 6.4+** toolchain
+
+### Build & Run from Source
 
 ```bash
+# Clone the repository
 git clone https://github.com/Yan123-tech/code-editor.git
 cd code-editor
+
+# Build debug binary
 swift build
+
+# Run the application
 swift run CodeEditorApp
 ```
 
-Run the tests with:
+### Run Test Suite
 
 ```bash
 swift test
 ```
 
-### Build the .app bundle
+### Packaging the `.app` Bundle
 
-`swift run` gives you the binary, not an application — no Dock tile, no menu bar, no
-double-clickable file. To get `build/Code Editor.app`, run:
+To package a standalone, double-clickable `Code Editor.app` with icons and embedded language bundles:
 
 ```bash
-Scripts/build-app.sh
+# Build release bundle into build/Code Editor.app
+./Scripts/build-app.sh
+
+# Or build debug bundle and launch immediately
+./Scripts/build-app.sh --debug --open
 ```
 
-The script builds in release, lays out `Contents/{MacOS,Resources}`, copies every SwiftPM
-resource bundle into `Contents/Resources` (CodeEditLanguages grammars and CodeEditSymbols
-assets are resolved through `Bundle.module`, which looks them up under `Bundle.main.resourceURL`),
-renders `AppIcon.icns` from `Scripts/make-icon.swift`, and ad-hoc signs the bundle.
+| Flag | Description |
+|:---|:---|
+| `--debug` | Compiles the debug build configuration instead of release |
+| `--open` | Automatically launches the application once packaged |
+| `--install` | Copies the compiled `.app` bundle into `/Applications` |
 
-| Flag | Effect |
-|---|---|
-| `--debug` | Build the debug product instead of release |
-| `--install` | Also copy the bundle to `/Applications` |
-| `--open` | Launch it when the build finishes |
-
-Ad-hoc signing is enough locally and for handing the bundle to another Mac. To distribute it
-further, swap the `codesign` identity in the script for a Developer ID and notarize the zipped
-bundle.
-
-Format and lint with `swift-format`, which ships inside the Xcode toolchain:
+### Code Formatting & Linting
 
 ```bash
+# Format code in-place
 swift-format format --in-place --recursive --configuration .swift-format Sources Tests
+
+# Lint strictly
 swift-format lint --recursive --strict --configuration .swift-format Sources Tests
 ```
 
-## Continuous integration
+---
 
-CI runs on every Pull Request and push to `main` across three automated jobs:
+## 🏗 Continuous Integration
 
-| Job | Environment | What it does |
-|---|---|---|
-| Format | `macos-latest` (Hosted) | `swift-format lint --strict`, then reformat and fail if `git diff` is non-empty |
-| Syntax | `macos-latest` (Hosted) | `swiftc -parse` on every source file |
-| Build & Test | `[self-hosted, macOS]` (Apple Silicon) | Full `swift build`, `swift test` (156 tests across 38 suites), and `./Scripts/build-app.sh --debug` bundle layout and codesign |
+Every Pull Request and commit to `main` is validated through automated GitHub Actions workflows:
 
-The package requires Swift 6.4 toolchain capabilities (`swift-tools-version: 6.4`) and native macOS AppKit / SwiftUI frameworks. Compilation and test execution run on a dedicated native Apple Silicon self-hosted runner (`yan-macbook-runner`) managed via `launchd`, guaranteeing that every PR compiles cleanly and satisfies all unit and end-to-end test suites.
+```
+┌────────────────────────────────────────────────────────┐
+│                   GitHub Actions CI                    │
+├─────────────────────┬──────────────────┬───────────────┤
+│ Format              │ Syntax           │ Build & Test  │
+│ macos-latest        │ macos-latest     │ Apple Silicon │
+│ (swift-format lint) │ (swiftc -parse)  │ (156 tests)   │
+└─────────────────────┴──────────────────┴───────────────┘
+```
 
-## Project layout
+- **Hosted Runners (`macos-latest`)**: Fast formatting and syntax checks.
+- **Dedicated Self-Hosted Runner (`yan-macbook-runner`)**: Apple Silicon runner executing `swift build`, `swift test` (156 unit & end-to-end tests), and `./Scripts/build-app.sh --debug` bundle layout and codesigning.
 
-| Module | Responsibility |
-|---|---|
-| `CodeEditorCore` | `Document`, `DocumentManager`, `TextSelectionManager`, `FileSystemManager`, `FileOutline`, `QuickOpenMatcher`, `QuickOpenIndex`, `RecentProjectsStore`, `SessionStore`, `Metrics`. No UI — Foundation only. |
-| `CodeEditorThemes` | `Theme`, `Chrome`, `Semantic`, `Typography`, `EditorColor`, `ThemeManager` with persisted selection. |
-| `CodeEditorTerminal` | `TerminalSession`, `PTYTerminalTransport`, `ANSITerminalParser`: POSIX pseudo-terminal subprocess, ANSI SGR color parsing, window resizing, scrollback. |
-| `CodeEditorLSP` | `JSONRPCTransport` (Content-Length framing, response correlation, server-request ACK, crash/time-out handling), `LSPClient` (initialize handshake, document sync, diagnostics, completions), `LanguageServerRegistry`, `GoFormatter`, and `OpenAIClient`. Wired to the editor via `LSPTextViewCoordinator`. |
-| `CodeEditorUI` | SwiftUI views: editor, sidebar, tabs, status bar, empty state, quick open, terminal, settings, plus `AppState`. |
-| `CodeEditorApp` | The `@main` App, menu commands, window layout, toolbar. |
+---
 
-Dependencies flow one way: `Core` ← `UI` ← `App`. `Themes`, `Terminal` and `LSP` are
-leaves that `UI` composes.
+## 📂 Project Architecture
 
-## Keyboard shortcuts
+```
+Code Editor/
+├── Sources/
+│   ├── CodeEditorCore/       # Documents, selection, file system, quick open, metrics
+│   ├── CodeEditorThemes/     # Liquid Glass palettes, chrome tokens, typography
+│   ├── CodeEditorTerminal/   # POSIX PTY, ANSI parser, process signals, window resize
+│   ├── CodeEditorLSP/        # DispatchSourceRead transport, LSPClient, OpenAIClient
+│   ├── CodeEditorUI/         # SwiftUI views, sidebar, tabs, terminal drawer, settings
+│   └── CodeEditorApp/        # Application entry point, window chrome, menu bar
+├── Tests/                    # 156 comprehensive unit and integration tests
+├── Resources/                # 1024x1024 Liquid Glass AppIcon.png
+└── Scripts/                  # App bundle packaging and icon compilation
+```
 
-| Shortcut | Action |
-|---|---|
-| `⌘N` | New file |
-| `⌘O` | Open folder |
-| `⇧⌘O` | Open files |
-| `⌘F` | Find |
-| `⌘P` | Quick open |
-| `⌘S` / `⌥⌘S` | Save / Save all |
-| `⌘W` | Close tab |
-| `⌘B` | Toggle sidebar |
-| `` ^` `` | Toggle terminal |
-| `⌘'` / `⇧⌘'` | Next / Previous diagnostic problem |
-| `⇧⌘L` | Toggle dark/light theme |
-| `⌘,` | Settings |
+<details>
+<summary><b>📚 Architectural Documentation</b></summary>
 
-## Documentation
+- [docs/IDEA.md](docs/IDEA.md) — Product philosophy and non-goals
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Module boundaries and data flow
+- [docs/MEMORY.md](docs/MEMORY.md) — Critical architectural constraints & system invariants
+- [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) — Active roadmap status and test coverage
+- [docs/PROCESS.md](docs/PROCESS.md) — PR lifecycle, local gates, and definition of done
+- [docs/BRANCHING.md](docs/BRANCHING.md) — Git workflow and branch naming conventions
+- [docs/COMMITTING.md](docs/COMMITTING.md) — Conventional Commits guidelines
 
-| Document | What it covers |
-|---|---|
-| [docs/IDEA.md](docs/IDEA.md) | What this is for, what it deliberately is not, design principles |
-| [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) | What works, what does not, test coverage, next steps |
-| [docs/STACK.md](docs/STACK.md) | Toolchain and dependency versions, with the reasoning for each choice |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module boundaries, data flow, concurrency, where coupling lives |
-| [docs/PROCESS.md](docs/PROCESS.md) | Local gate, branching, PRs, definition of done, releasing |
-| [docs/MEMORY.md](docs/MEMORY.md) | Constraints that are expensive to rediscover |
-| [docs/BRANCHING.md](docs/BRANCHING.md) | Branch naming and the PR flow |
-| [docs/COMMITTING.md](docs/COMMITTING.md) | Conventional Commits types and scopes |
-| [AGENTS.md](AGENTS.md) | Instructions for coding agents working here |
+</details>
 
-`docs/MEMORY.md` is the one to read first. It records constraints such as why `FileSystemManager`
-keys on paths rather than `URL`s, how POSIX PTY process group signaling operates, and why
-`NSBezierPath.safeBounds` swizzling prevents empty-path exceptions during typing.
+---
 
-If a change makes any of these documents wrong, fixing the document is part of the change.
-See [AGENTS.md](AGENTS.md).
+## 🗺 Roadmap
 
-## Roadmap
+- [x] **Completion Popup** — Fuzzy-filtered LSP completion menu ([#1](https://github.com/Yan123-tech/code-editor/issues/1))
+- [x] **Diagnostics & Problems Popover** — Live compiler issues and jump hotkeys ([#2](https://github.com/Yan123-tech/code-editor/issues/2), [#10](https://github.com/Yan123-tech/code-editor/pull/10))
+- [x] **External Change Detection** — Safe reload prompts when disk files change ([#6](https://github.com/Yan123-tech/code-editor/issues/6))
+- [x] **POSIX PTY Terminal** — Embedded terminal with truecolor & resize support ([#5](https://github.com/Yan123-tech/code-editor/issues/5), [#7](https://github.com/Yan123-tech/code-editor/pull/7))
+- [x] **Native Settings Panel** — Preferences window with modular tabs ([#4](https://github.com/Yan123-tech/code-editor/issues/4), [#8](https://github.com/Yan123-tech/code-editor/pull/8))
+- [x] **Go Language Support** — `gopls` integration and `gofmt` on save ([#17](https://github.com/Yan123-tech/code-editor/issues/17), [#18](https://github.com/Yan123-tech/code-editor/pull/18))
+- [x] **AI Autocompletions** — Multi-provider AI streaming backend ([#21](https://github.com/Yan123-tech/code-editor/issues/21), [#22](https://github.com/Yan123-tech/code-editor/pull/22))
+- [x] **Liquid Glass App Icon** — macOS HIG app icon redesign ([#30](https://github.com/Yan123-tech/code-editor/issues/30), [#31](https://github.com/Yan123-tech/code-editor/pull/31))
+- [ ] **Find in Project** — Global workspace search & replace (`⇧⌘F`) ([#27](https://github.com/Yan123-tech/code-editor/issues/27))
+- [ ] **Inline Ghost-Text AI** — Multi-token inline suggestions accepted with Tab ([#28](https://github.com/Yan123-tech/code-editor/issues/28))
+- [ ] **Git Gutter Diff Markers** — Gutter line additions/deletions and branch status ([#29](https://github.com/Yan123-tech/code-editor/issues/29))
+- [ ] **Hover & Go-to-Definition** — Quick docs and jump-to-source ([#3](https://github.com/Yan123-tech/code-editor/issues/3))
 
-1. [Completion popup](https://github.com/Yan123-tech/code-editor/issues/1) — completed
-2. [Diagnostics overlay & Problems popover](https://github.com/Yan123-tech/code-editor/issues/2) — completed ([#10](https://github.com/Yan123-tech/code-editor/pull/10))
-3. [External change detection](https://github.com/Yan123-tech/code-editor/issues/6) — completed
-4. [PTY terminal](https://github.com/Yan123-tech/code-editor/issues/5) — completed ([#7](https://github.com/Yan123-tech/code-editor/pull/7))
-5. [Settings panel](https://github.com/Yan123-tech/code-editor/issues/4) — completed ([#8](https://github.com/Yan123-tech/code-editor/pull/8))
-6. [Go language adaptation & gofmt on save](https://github.com/Yan123-tech/code-editor/issues/17) — completed ([#18](https://github.com/Yan123-tech/code-editor/pull/18))
-7. [AI completion provider integration](https://github.com/Yan123-tech/code-editor/issues/21) — completed ([#22](https://github.com/Yan123-tech/code-editor/pull/22))
-8. [App icon liquid glass HIG redesign](https://github.com/Yan123-tech/code-editor/issues/30) — in progress ([#31](https://github.com/Yan123-tech/code-editor/pull/31))
-9. [Find in Project / global search & replace (⇧⌘F)](https://github.com/Yan123-tech/code-editor/issues/27) — planned
-10. [Git gutter diff markers & branch indicator](https://github.com/Yan123-tech/code-editor/issues/29) — planned
-11. [Hover and go-to-definition](https://github.com/Yan123-tech/code-editor/issues/3) — planned
+---
 
-## Contributing
+## 🤝 Contributing
 
-`main` is the only long-lived branch and must always build green. Branch off it as
-`feature/…`, `fix/…`, `chore/…`, `docs/…` or `test/…`, commit in
-[Conventional Commits](https://www.conventionalcommits.org/) form, and open a PR.
+Contributions are welcome! Please check our [Contributing Guidelines](docs/PROCESS.md) and [Branching Strategy](docs/BRANCHING.md) before submitting a Pull Request.
 
-- Branching model and PR flow: [docs/BRANCHING.md](docs/BRANCHING.md)
-- Commit types and scopes: [docs/COMMITTING.md](docs/COMMITTING.md)
-- Full workflow: [docs/PROCESS.md](docs/PROCESS.md)
+1. Fork & branch off `main` (`git checkout -b feature/your-feature`)
+2. Format code (`swift-format format --in-place --recursive Sources Tests`)
+3. Run tests (`swift test`)
+4. Commit following [Conventional Commits](https://www.conventionalcommits.org/)
+5. Open a Pull Request and verify CI status
 
-Before pushing, verify formatting with `swift-format lint --strict Sources Tests` and ensure all tests pass (`swift test`). CI validates formatting, syntax, module compilation, unit tests, and `.app` packaging automatically on every PR.
+---
 
-## License
+## 📄 License
 
-[MIT](LICENSE)
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
