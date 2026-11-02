@@ -33,11 +33,20 @@ In AppKit, calling `-[NSBezierPath bounds]` or `-[NSBezierPath controlPointBound
 
 ---
 
+## 35. Native macOS CI/CD Runner Architecture
+
+Because the project relies on macOS AppKit, SwiftUI, and Swift 6.4+ tools version (`// swift-tools-version: 6.4`) required by `CodeEditSourceEditor 0.15`:
+- **Docker / Linux VPS Incompatibility**: Standard Linux VPS and Docker environments cannot compile or run macOS AppKit/SwiftUI code.
+- **GitHub Actions Native Self-Hosted Runner**: A persistent macOS ARM64 self-hosted runner (`yan-macbook-runner`) is configured on Apple Silicon via `~/Library/LaunchAgents` (`actions.runner.Yan123-tech-code-editor.yan-macbook-runner`).
+- **Automated Validation**: Runs `swift build`, `swift test`, and `./Scripts/build-app.sh --debug` on all PRs and pushes to `main` under `runs-on: [self-hosted, macOS]`, while `format` and `syntax` continue on hosted runners.
+
+---
+
 ## Quick reference
 
 | Question | Answer |
 |---|---|
-| Why doesn't CI build? | No runner has SwiftPM 6.4. #1 above. |
+| Why doesn't CI build? | #35. CI now builds and tests on the native macOS self-hosted runner (`[self-hosted, macOS]`). |
 | What must I run before pushing? | `swift build && swift test`, plus `swift-format lint --strict`. |
 | Can I change `Package.swift`? | Only if you have a Swift 6.3+ toolchain to verify against. See #1. |
 | Why is the sidebar slow to show subfolders? | `load` is async and re-renders as children arrive. By design. |
@@ -60,3 +69,4 @@ In AppKit, calling `-[NSBezierPath bounds]` or `-[NSBezierPath controlPointBound
 | Where do I add a diagnostic severity colour? | `Theme.semantic` — `.danger`, `.warning`, `.success`. Never a syntax token. |
 | Why did interactive terminal programs like `vim` or `top` fail? | #33. They require a POSIX PTY and window resize ioctls (`TIOCSWINSZ`), not Foundation `Pipe`s. |
 | Why did typing or pressing Enter crash in the editor? | #34. `NSBezierPath.bounds` throws on empty path in `EmphasisManager`. Swizzled and cleared on edit. |
+| How is CI/CD configured? | #35. `ci.yml` has format & syntax on `macos-latest`, and build & test on `[self-hosted, macOS]`. |

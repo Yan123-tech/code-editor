@@ -506,7 +506,8 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
         tv.window?.makeFirstResponder(tv)
 
         if let layoutManager = tv.layoutManager,
-           !layoutManager.rectsFor(range: effectiveRange).isEmpty {
+            !layoutManager.rectsFor(range: effectiveRange).isEmpty
+        {
             let jumpEmphasis = Emphasis(
                 range: effectiveRange,
                 style: .standard,
@@ -669,7 +670,8 @@ final class LSPTextViewCoordinator: TextViewCoordinator, TextViewDelegate,
 
             // Guard against empty layout rects (e.g. newline or whitespace without glyphs)
             guard let layoutManager = tv.layoutManager,
-                  !layoutManager.rectsFor(range: effectiveRange).isEmpty else {
+                !layoutManager.rectsFor(range: effectiveRange).isEmpty
+            else {
                 continue
             }
 

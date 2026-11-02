@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+
 @testable import CodeEditorUI
 
 @Suite("NSBezierPath SafeBounds Workaround")
