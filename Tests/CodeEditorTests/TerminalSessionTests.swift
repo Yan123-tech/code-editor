@@ -303,11 +303,12 @@ struct PTYTerminalTransportTests {
             }
         )
 
-        // Wait up to 3 seconds for subprocess to execute and finish
+        // Wait up to 3 seconds for output to arrive and subprocess to finish
         let start = Date()
         while Date().timeIntervalSince(start) < 3.0 {
-            let exited = exitedBox.withLock { $0 }
-            if exited { break }
+            let outputData = outputBox.withLock { $0 }
+            let outputString = String(decoding: outputData, as: UTF8.self)
+            if outputString.contains("IS_A_REAL_PTY") { break }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
