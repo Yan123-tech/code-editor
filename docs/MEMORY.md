@@ -42,6 +42,14 @@ Because the project relies on macOS AppKit, SwiftUI, and Swift 6.4+ tools versio
 
 ---
 
+## 36. DispatchSourceRead vs FileHandle.availableData & SIGPIPE Immunity
+
+In `JSONRPCTransport`, Foundation's `FileHandle.readabilityHandler` and `-[NSConcreteFileHandle availableData]` internally call `-[NSConcreteFileHandle readDataUpToLength:error:]`. When the language server process exits, crashes, or closes its stdout descriptor before or during GCD readability callback invocation, `availableData` raises an uncaught Objective-C `NSFileHandleOperationException` (`Bad file descriptor`), immediately terminating the process (`SIGABRT`). Furthermore, writing to a broken pipe when the server terminates sends unhandled `SIGPIPE` to the parent process.
+- **SIGPIPE Immunity**: `signal(SIGPIPE, SIG_IGN)` is configured in `JSONRPCTransport.init()` to ensure that writes to closed or broken pipes fail with Swift-catchable errors (`EPIPE`) rather than aborting the process.
+- **Native DispatchSourceRead**: Replaces `FileHandle.readabilityHandler` with Darwin's `DispatchSource.makeReadSource(fileDescriptor:queue:)` configured with non-blocking reads (`O_NONBLOCK`). POSIX `Darwin.read(fd, &buf, count)` safely returns `-1` with `errno` on bad descriptors without raising any Objective-C exceptions, cleanly triggering `handleServerClosed()` and unblocking all pending callers.
+
+---
+
 ## Quick reference
 
 | Question | Answer |
@@ -70,3 +78,4 @@ Because the project relies on macOS AppKit, SwiftUI, and Swift 6.4+ tools versio
 | Why did interactive terminal programs like `vim` or `top` fail? | #33. They require a POSIX PTY and window resize ioctls (`TIOCSWINSZ`), not Foundation `Pipe`s. |
 | Why did typing or pressing Enter crash in the editor? | #34. `NSBezierPath.bounds` throws on empty path in `EmphasisManager`. Swizzled and cleared on edit. |
 | How is CI/CD configured? | #35. `ci.yml` has format & syntax on `macos-latest`, and build & test on `[self-hosted, macOS]`. |
+| Why did JSONRPCTransport crash with Bad file descriptor? | #36. `FileHandle.availableData` throws uncatchable Objective-C exceptions. Solved via `DispatchSourceRead` and `SIGPIPE_IGN`. |
