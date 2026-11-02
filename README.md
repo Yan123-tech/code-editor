@@ -46,36 +46,36 @@
 
 ---
 
-## 🌟 Highlights
+## <img src="Resources/icons/zap.svg" width="20" height="20" align="absmiddle" /> Highlights
 
 <table>
   <tr>
     <td width="50%">
-      <h3>⚡️ Native POSIX PTY Terminal</h3>
+      <h3><img src="Resources/icons/terminal.svg" width="18" height="18" align="absmiddle" /> Native POSIX PTY Terminal</h3>
       Genuine pseudo-terminal (<code>posix_openpt</code>) running your default <code>$SHELL</code>. Supports 24-bit RGB truecolor, inline carriage-return overwrites (<code>\r</code>), window resizing signals (<code>TIOCSWINSZ</code>), process-group interrupts, and interactive TUIs (<code>vim</code>, <code>top</code>, <code>git log</code>).
     </td>
     <td width="50%">
-      <h3>🧠 Language Server Protocol (LSP)</h3>
+      <h3><img src="Resources/icons/code.svg" width="18" height="18" align="absmiddle" /> Language Server Protocol (LSP)</h3>
       First-class LSP support for <b>Swift</b> (<code>sourcekit-lsp</code>) and <b>Go</b> (<code>gopls</code>) over a robust, non-blocking <code>DispatchSourceRead</code> JSON-RPC transport. Features fuzzy autocomplete, parameter hints, and automatic <code>gofmt</code> formatting on save.
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3>🔍 Live Diagnostics & Problems</h3>
+      <h3><img src="Resources/icons/alert.svg" width="18" height="18" align="absmiddle" /> Live Diagnostics & Problems</h3>
       Real-time compiler diagnostic markers in the gutter, squiggly underlines beneath issue ranges, summary error/warning badges in the status bar, jump hotkeys (<code>⌘'</code> / <code>⇧⌘'</code>), and an interactive Problems popover.
     </td>
     <td width="50%">
-      <h3>✨ AI Code Assistance</h3>
+      <h3><img src="Resources/icons/sparkles.svg" width="18" height="18" align="absmiddle" /> AI Code Assistance</h3>
       Configurable OpenAI-compatible backend supporting <b>OpenAI</b>, <b>Ollama</b>, <b>LM Studio</b>, and <b>OpenRouter</b>. Features debounced query dispatch, multi-line documentation previews, and markdown artifact cleanup.
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3>🎨 Liquid Glass macOS HIG Design</h3>
+      <h3><img src="Resources/icons/palette.svg" width="18" height="18" align="absmiddle" /> Liquid Glass macOS HIG Design</h3>
       Crafted exclusively for macOS using SF Pro typography, a strict 4pt grid system, Dark / Light / High-Contrast themes, a native Settings window (<code>⌘,</code>), and a bespoke Liquid Glass app icon.
     </td>
     <td width="50%">
-      <h3>🛡 Battle-Tested Reliability</h3>
+      <h3><img src="Resources/icons/shield.svg" width="18" height="18" align="absmiddle" /> Battle-Tested Reliability</h3>
       Hardened against edge cases: swizzled <code>NSBezierPath.safeBounds</code> preventing AppKit empty path crashes, <code>SIGPIPE</code> immunity, file modification guards, and <b>156 automated test suites</b>.
     </td>
   </tr>
@@ -83,7 +83,7 @@
 
 ---
 
-## 🚀 What Works Today
+## <img src="Resources/icons/layers.svg" width="20" height="20" align="absmiddle" /> What Works Today
 
 - **File Explorer**: Recursive directory tree with asynchronous lazy loading, file/folder creation, inline renaming, deletion, and Finder integration. System dotfiles are cleanly hidden.
 - **Source Editor**: Full `NSTextView`-backed editor (via [CodeEditSourceEditor](https://github.com/CodeEditApp/CodeEditSourceEditor)) with Tree-sitter syntax highlighting, line numbers, bracket-pair highlighting, indentation-on-type, word wrap, and unified undo stack.
@@ -98,7 +98,7 @@
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## <img src="Resources/icons/keyboard.svg" width="20" height="20" align="absmiddle" /> Keyboard Shortcuts
 
 | Shortcut | Command | Shortcut | Command |
 |:---:|:---|:---:|:---|
@@ -112,7 +112,7 @@
 
 ---
 
-## 🛠 Getting Started
+## <img src="Resources/icons/play.svg" width="20" height="20" align="absmiddle" /> Getting Started
 
 ### Prerequisites
 - **macOS 14.0 (Sonoma)** or later
@@ -168,7 +168,7 @@ swift-format lint --recursive --strict --configuration .swift-format Sources Tes
 
 ---
 
-## 🏗 Continuous Integration
+## <img src="Resources/icons/workflow.svg" width="20" height="20" align="absmiddle" /> Continuous Integration
 
 Every Pull Request and commit to `main` is validated through automated GitHub Actions workflows:
 
@@ -187,7 +187,7 @@ Every Pull Request and commit to `main` is validated through automated GitHub Ac
 
 ---
 
-## 📂 Project Architecture
+## <img src="Resources/icons/folder.svg" width="20" height="20" align="absmiddle" /> Project Architecture
 
 ```
 Code Editor/
@@ -199,12 +199,12 @@ Code Editor/
 │   ├── CodeEditorUI/         # SwiftUI views, sidebar, tabs, terminal drawer, settings
 │   └── CodeEditorApp/        # Application entry point, window chrome, menu bar
 ├── Tests/                    # 156 comprehensive unit and integration tests
-├── Resources/                # 1024x1024 Liquid Glass AppIcon.png
+├── Resources/                # 1024x1024 Liquid Glass AppIcon.png & vector icons
 └── Scripts/                  # App bundle packaging and icon compilation
 ```
 
 <details>
-<summary><b>📚 Architectural Documentation</b></summary>
+<summary><b><img src="Resources/icons/book.svg" width="16" height="16" align="absmiddle" /> Architectural Documentation</b></summary>
 
 - [docs/IDEA.md](docs/IDEA.md) — Product philosophy and non-goals
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Module boundaries and data flow
@@ -218,7 +218,7 @@ Code Editor/
 
 ---
 
-## 🗺 Roadmap
+## <img src="Resources/icons/milestone.svg" width="20" height="20" align="absmiddle" /> Roadmap
 
 - [x] **Completion Popup** — Fuzzy-filtered LSP completion menu ([#1](https://github.com/Yan123-tech/code-editor/issues/1))
 - [x] **Diagnostics & Problems Popover** — Live compiler issues and jump hotkeys ([#2](https://github.com/Yan123-tech/code-editor/issues/2), [#10](https://github.com/Yan123-tech/code-editor/pull/10))
@@ -235,7 +235,7 @@ Code Editor/
 
 ---
 
-## 🤝 Contributing
+## <img src="Resources/icons/users.svg" width="20" height="20" align="absmiddle" /> Contributing
 
 Contributions are welcome! Please check our [Contributing Guidelines](docs/PROCESS.md) and [Branching Strategy](docs/BRANCHING.md) before submitting a Pull Request.
 
@@ -247,6 +247,6 @@ Contributions are welcome! Please check our [Contributing Guidelines](docs/PROCE
 
 ---
 
-## 📄 License
+## <img src="Resources/icons/license.svg" width="20" height="20" align="absmiddle" /> License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
