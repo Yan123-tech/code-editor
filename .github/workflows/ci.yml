@@ -52,7 +52,7 @@ jobs:
 
       # Type-checking needs the full dependency graph, which needs SwiftPM 6.4 for
       # CodeEditSourceEditor 0.15's resource bundles. Parsing does not, so this is
-      # the strongest check available on a hosted runner today. See README.
+      # the strongest check available on a hosted runner today.
       - name: Parse every source file
         run: |
           rc=0
@@ -64,9 +64,23 @@ jobs:
           done < <(find Sources Tests -name '*.swift')
           exit $rc
 
-# Build and test run locally and in release, not here: the package declares
-# swift-tools-version 6.4 and CodeEditSourceEditor 0.15 needs SwiftPM 6.4 to
-# generate its resource bundles, while hosted runners top out at 6.3.3. Lowering the
-# manifest to 6.3 fails inside a dependency (CodeEditSymbols 0.2.3 has no resources
-# declared, so SwiftPM 6.3 does not emit Bundle.module). Add a `build` job here when
-# a runner ships 6.4.
+  build-and-test:
+    name: Build & Test
+    runs-on: [self-hosted, macOS]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Build Package
+        run: swift build
+
+      - name: Run Tests
+        run: swift test
+
+      - name: Verify App Bundle Packaging
+        run: ./Scripts/build-app.sh --debug

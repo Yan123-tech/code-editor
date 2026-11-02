@@ -1,29 +1,43 @@
 import AppKit
 
 extension NSBezierPath {
-    private static let _installToken: Void = {
-        if let originalBounds = class_getInstanceMethod(NSBezierPath.self, #selector(getter: NSBezierPath.bounds)),
-           let swizzledBounds = class_getInstanceMethod(NSBezierPath.self, #selector(NSBezierPath.safe_bounds)) {
+    private static let installToken: Void = {
+        if let originalBounds = class_getInstanceMethod(
+            NSBezierPath.self,
+            #selector(getter: NSBezierPath.bounds)
+        ),
+            let swizzledBounds = class_getInstanceMethod(
+                NSBezierPath.self,
+                #selector(NSBezierPath.safeBounds)
+            )
+        {
             method_exchangeImplementations(originalBounds, swizzledBounds)
         }
-        if let originalCPB = class_getInstanceMethod(NSBezierPath.self, #selector(getter: NSBezierPath.controlPointBounds)),
-           let swizzledCPB = class_getInstanceMethod(NSBezierPath.self, #selector(NSBezierPath.safe_controlPointBounds)) {
+        if let originalCPB = class_getInstanceMethod(
+            NSBezierPath.self,
+            #selector(getter: NSBezierPath.controlPointBounds)
+        ),
+            let swizzledCPB = class_getInstanceMethod(
+                NSBezierPath.self,
+                #selector(NSBezierPath.safeControlPointBounds)
+            )
+        {
             method_exchangeImplementations(originalCPB, swizzledCPB)
         }
     }()
 
-    @objc dynamic func safe_bounds() -> NSRect {
+    @objc dynamic func safeBounds() -> NSRect {
         if self.isEmpty || self.elementCount == 0 {
             return .zero
         }
-        return self.safe_bounds()
+        return self.safeBounds()
     }
 
-    @objc dynamic func safe_controlPointBounds() -> NSRect {
+    @objc dynamic func safeControlPointBounds() -> NSRect {
         if self.isEmpty || self.elementCount == 0 {
             return .zero
         }
-        return self.safe_controlPointBounds()
+        return self.safeControlPointBounds()
     }
 
     /// Swizzles `bounds` and `controlPointBounds` on `NSBezierPath` so that querying an empty path
@@ -33,6 +47,6 @@ extension NSBezierPath {
     /// Objective-C exception if the path has 0 elements. Libraries like CodeEditTextView's `EmphasisManager`
     /// call `.bounds` during text rendering without checking `isEmpty`, leading to `SIGABRT` crashes.
     public static func installSafeBoundsWorkaround() {
-        _ = _installToken
+        _ = installToken
     }
 }
