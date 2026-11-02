@@ -1,20 +1,40 @@
-// Renders the source PNG for AppIcon.icns.
+// Renders the source PNG for AppIcon.icns in liquid glass macOS convention.
 //
 //   swift Scripts/make-icon.swift <output.png>
 //
-// The script draws a 1024pt squircle with a violet gradient, a monospace
-// "</>" and a caret bar, then writes a single PNG. build-app.sh downsamples it
-// into an .iconset and runs iconutil.
+// If a master asset is present at Resources/AppIcon.png, it is copied directly.
+// Otherwise, it procedurally renders an Apple HIG compliant 1024x1024 icon
+// featuring an 824x824 squircle, dual-layer ambient and contact drop shadows,
+// deep obsidian and emerald liquid glass fluid, and frosted glass code brackets.
 import AppKit
 
-let dimension = 1024
 let outputPath = CommandLine.arguments.dropFirst().first ?? "AppIcon.png"
+let destinationURL = URL(fileURLWithPath: outputPath)
+
+// Check if master asset exists in Resources/
+let scriptURL = URL(fileURLWithPath: CommandLine.arguments[0])
+let rootURL = scriptURL.deletingLastPathComponent().deletingLastPathComponent()
+let masterAssetURL = rootURL.appendingPathComponent("Resources/AppIcon.png")
+
+if FileManager.default.fileExists(atPath: masterAssetURL.path) {
+    if masterAssetURL.standardizedFileURL != destinationURL.standardizedFileURL {
+        try? FileManager.default.removeItem(at: destinationURL)
+        try FileManager.default.copyItem(at: masterAssetURL, to: destinationURL)
+    }
+    exit(0)
+}
+
+// Procedural Liquid Glass Generator Fallback
+let dimension: CGFloat = 1024
+let bodySize: CGFloat = 824
+let margin: CGFloat = (dimension - bodySize) / 2
+let cornerRadius: CGFloat = 185
 
 guard
     let bitmap = NSBitmapImageRep(
         bitmapDataPlanes: nil,
-        pixelsWide: dimension,
-        pixelsHigh: dimension,
+        pixelsWide: Int(dimension),
+        pixelsHigh: Int(dimension),
         bitsPerSample: 8,
         samplesPerPixel: 4,
         hasAlpha: true,
@@ -24,90 +44,157 @@ guard
         bitsPerPixel: 0
     )
 else {
-    fatalError("could not allocate bitmap")
+    fatalError("Could not allocate bitmap")
 }
 
 NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
 let context = NSGraphicsContext.current!.cgContext
 
-let side = CGFloat(dimension)
-let margin: CGFloat = 96
-let squircle = CGRect(
-    x: margin,
-    y: margin,
-    width: side - margin * 2,
-    height: side - margin * 2
+let squircleRect = CGRect(x: margin, y: margin, width: bodySize, height: bodySize)
+let squirclePath = CGPath(
+    roundedRect: squircleRect,
+    cornerWidth: cornerRadius,
+    cornerHeight: cornerRadius,
+    transform: nil
 )
 
-// Gradient plate, clipped to the squircle.
+// 1. Ambient Drop Shadow (Apple HIG: blur ~28, offset ~22 down, 20% opacity)
 context.saveGState()
-context.addPath(CGPath(roundedRect: squircle, cornerWidth: 224, cornerHeight: 224, transform: nil))
+context.setShadow(
+    offset: CGSize(width: 0, height: -22),
+    blur: 28,
+    color: NSColor(white: 0, alpha: 0.22).cgColor
+)
+context.addPath(squirclePath)
+context.setFillColor(NSColor.black.cgColor)
+context.fillPath()
+context.restoreGState()
+
+// 2. Contact Drop Shadow (Apple HIG: blur ~14, offset ~10 down, 25% opacity)
+context.saveGState()
+context.setShadow(
+    offset: CGSize(width: 0, height: -10),
+    blur: 14,
+    color: NSColor(white: 0, alpha: 0.25).cgColor
+)
+context.addPath(squirclePath)
+context.setFillColor(NSColor.black.cgColor)
+context.fillPath()
+context.restoreGState()
+
+// 3. Liquid Glass Plate (Clipped)
+context.saveGState()
+context.addPath(squirclePath)
 context.clip()
 
-let space = CGColorSpaceCreateDeviceRGB()
-let plate = CGGradient(
-    colorsSpace: space,
+let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+// Deep Obsidian / Midnight Sapphire Base
+let basePlate = CGGradient(
+    colorsSpace: colorSpace,
     colors: [
-        NSColor(calibratedRed: 0.36, green: 0.20, blue: 0.78, alpha: 1).cgColor,
-        NSColor(calibratedRed: 0.62, green: 0.32, blue: 0.92, alpha: 1).cgColor,
+        NSColor(calibratedRed: 0.05, green: 0.07, blue: 0.14, alpha: 1.0).cgColor,
+        NSColor(calibratedRed: 0.01, green: 0.02, blue: 0.06, alpha: 1.0).cgColor,
     ] as CFArray,
     locations: [0, 1]
 )!
 context.drawLinearGradient(
-    plate,
-    start: CGPoint(x: squircle.minX, y: squircle.maxY),
-    end: CGPoint(x: squircle.maxX, y: squircle.minY),
+    basePlate,
+    start: CGPoint(x: squircleRect.minX, y: squircleRect.maxY),
+    end: CGPoint(x: squircleRect.maxX, y: squircleRect.minY),
     options: []
 )
 
-// Soft highlight so the plate reads as glass rather than flat fill.
-let highlight = CGGradient(
-    colorsSpace: space,
+// Internal Liquid Emerald & Teal Caustics
+let liquidCaustic = CGGradient(
+    colorsSpace: colorSpace,
     colors: [
-        NSColor(white: 1, alpha: 0.22).cgColor,
-        NSColor(white: 1, alpha: 0).cgColor,
+        NSColor(calibratedRed: 0.0, green: 0.85, blue: 0.65, alpha: 0.75).cgColor,
+        NSColor(calibratedRed: 0.0, green: 0.45, blue: 0.75, alpha: 0.40).cgColor,
+        NSColor(calibratedRed: 0.1, green: 0.05, blue: 0.35, alpha: 0.0).cgColor,
     ] as CFArray,
-    locations: [0, 1]
+    locations: [0.0, 0.45, 1.0]
 )!
 context.drawRadialGradient(
-    highlight,
-    startCenter: CGPoint(x: squircle.midX - 160, y: squircle.maxY - 140),
+    liquidCaustic,
+    startCenter: CGPoint(x: squircleRect.minX + 260, y: squircleRect.minY + 280),
     startRadius: 0,
-    endCenter: CGPoint(x: squircle.midX - 160, y: squircle.maxY - 140),
-    endRadius: 620,
+    endCenter: CGPoint(x: squircleRect.minX + 260, y: squircleRect.minY + 280),
+    endRadius: 520,
     options: []
 )
-context.restoreGState()
 
-// Glyph.
+// Secondary Cyan / Violet Liquid Flare
+let liquidFlare = CGGradient(
+    colorsSpace: colorSpace,
+    colors: [
+        NSColor(calibratedRed: 0.2, green: 0.7, blue: 1.0, alpha: 0.65).cgColor,
+        NSColor(calibratedRed: 0.5, green: 0.2, blue: 0.9, alpha: 0.25).cgColor,
+        NSColor(calibratedRed: 0.0, green: 0.0, blue: 0.0, alpha: 0.0).cgColor,
+    ] as CFArray,
+    locations: [0.0, 0.5, 1.0]
+)!
+context.drawRadialGradient(
+    liquidFlare,
+    startCenter: CGPoint(x: squircleRect.maxX - 240, y: squircleRect.maxY - 220),
+    startRadius: 0,
+    endCenter: CGPoint(x: squircleRect.maxX - 240, y: squircleRect.maxY - 220),
+    endRadius: 480,
+    options: []
+)
+
+// 4. Frosted Glass Code Brackets Glyph (< / >)
 let glyph = NSAttributedString(
     string: "</>",
     attributes: [
-        .font: NSFont.monospacedSystemFont(ofSize: 292, weight: .bold),
-        .foregroundColor: NSColor.white,
+        .font: NSFont.monospacedSystemFont(ofSize: 260, weight: .semibold),
+        .foregroundColor: NSColor(white: 0.95, alpha: 0.90),
     ]
 )
 let glyphSize = glyph.size()
-glyph.draw(
-    at: CGPoint(
-        x: squircle.midX - glyphSize.width / 2,
-        y: squircle.midY - glyphSize.height / 2 - 10
-    )
+let glyphOrigin = CGPoint(
+    x: squircleRect.midX - glyphSize.width / 2,
+    y: squircleRect.midY - glyphSize.height / 2 - 12
 )
 
-// Caret bar.
-let caret = NSBezierPath(
-    roundedRect: CGRect(x: squircle.midX - 66, y: squircle.midY - 268, width: 132, height: 28),
-    xRadius: 14,
-    yRadius: 14
+// Soft under-glow for glyph
+context.saveGState()
+context.setShadow(
+    offset: CGSize(width: 0, height: 4),
+    blur: 18,
+    color: NSColor(calibratedRed: 0.0, green: 0.9, blue: 0.7, alpha: 0.5).cgColor
 )
-NSColor(calibratedRed: 0.63, green: 0.95, blue: 0.79, alpha: 1).setFill()
-caret.fill()
+glyph.draw(at: glyphOrigin)
+context.restoreGState()
 
+// 5. Specular Inner Rim Highlight (Apple HIG Glass Convention)
+context.addPath(squirclePath)
+context.setLineWidth(2.5)
+let rimColors =
+    [
+        NSColor(white: 1.0, alpha: 0.45).cgColor,
+        NSColor(white: 1.0, alpha: 0.08).cgColor,
+        NSColor(white: 0.0, alpha: 0.25).cgColor,
+    ] as CFArray
+let rimGradient = CGGradient(
+    colorsSpace: colorSpace,
+    colors: rimColors,
+    locations: [0.0, 0.45, 1.0]
+)!
+context.replacePathWithStrokedPath()
+context.clip()
+context.drawLinearGradient(
+    rimGradient,
+    start: CGPoint(x: 512, y: squircleRect.maxY),
+    end: CGPoint(x: 512, y: squircleRect.minY),
+    options: []
+)
+
+context.restoreGState()
 NSGraphicsContext.restoreGraphicsState()
 
 guard let png = bitmap.representation(using: .png, properties: [:]) else {
-    fatalError("could not encode PNG")
+    fatalError("Could not encode PNG")
 }
-try png.write(to: URL(fileURLWithPath: outputPath))
+try png.write(to: destinationURL)
