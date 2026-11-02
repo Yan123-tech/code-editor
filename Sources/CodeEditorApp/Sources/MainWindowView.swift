@@ -13,16 +13,8 @@ struct MainWindowView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: columnVisibility) {
-            FileExplorerView(
-                fileSystemManager: appState.fileSystemManager,
-                theme: appState.theme,
-                activeDocumentURL: appState.documentManager.activeDocument?.url,
-                onOpenFile: { url in appState.openFile(url) },
-                onCreateIn: { directory, kind in
-                    appState.requestCreation(kind: kind, in: directory)
-                }
-            )
-            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 420)
+            SidebarContainerView(appState: appState)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 450)
         } detail: {
             VStack(spacing: 0) {
                 TabBarView(

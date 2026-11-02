@@ -65,6 +65,9 @@ public struct CodeEditorView: View {
             textCoordinator.updateDocument(document)
             editorState.syncSelection(of: document)
             await lspCoordinator.switchTo(document: document)
+            if let request = appState.searchJumpRequest {
+                applySearchJump(request: request)
+            }
         }
         // The panel reports its own visibility; that is the authoritative signal,
         // so this writes back and the forward sync below becomes a no-op.
@@ -88,6 +91,25 @@ public struct CodeEditorView: View {
             }
             appState.diagnosticJumpRequest = nil
         }
+        .onChange(of: appState.searchJumpRequest) { _, request in
+            guard let request else { return }
+            applySearchJump(request: request)
+        }
+    }
+
+    private func applySearchJump(request: SearchJumpRequest) {
+        guard let currentURL = document.url,
+            currentURL.standardizedFileURL.path == request.fileURL.standardizedFileURL.path
+        else { return }
+        let line = max(0, request.lineNumber - 1)
+        let col = max(0, request.column - 1)
+        guard let startOffset = document.offset(forLine: line, column: col) else { return }
+        let endOffset = min(document.content.utf16.count, startOffset + request.length)
+        guard let range = document.nsRange(from: startOffset, to: endOffset) else { return }
+        lspCoordinator.jumpTo(range: range)
+        document.setSelection(from: startOffset, to: endOffset)
+        editorState.syncSelection(of: document)
+        appState.searchJumpRequest = nil
     }
 
     // MARK: - Configuration
