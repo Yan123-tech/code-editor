@@ -29,6 +29,9 @@
   <a href="https://github.com/Yan123-tech/code-editor/actions">
     <img src="https://img.shields.io/badge/Runner-M--Series%20ARM64-6366F1?style=flat-square&logo=githubactions&logoColor=white" alt="Self-Hosted Runner" />
   </a>
+  <a href="https://gemini.google.com">
+    <img src="https://img.shields.io/badge/Built%20with-Gemini%20AI-4285F4?style=flat-square&logo=googlegemini&logoColor=white" alt="Built with Gemini AI" />
+  </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-F59E0B?style=flat-square" alt="MIT License" />
   </a>
@@ -41,6 +44,12 @@
 </p>
 
 *A clean, blisteringly fast developer environment powered by native Apple frameworks, Language Server Protocol (LSP), POSIX PTY terminal emulation, and multi-provider AI completions.*
+
+<br/>
+
+<p align="center">
+  <img src="Resources/app-screenshot.png" alt="Code Editor Interface with Go LSP Diagnostics" width="100%" style="border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.1);" />
+</p>
 
 </div>
 
@@ -250,3 +259,13 @@ Contributions are welcome! Please check our [Contributing Guidelines](docs/PROCE
 ## <img src="Resources/icons/license.svg" width="20" height="20" align="absmiddle" /> License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## <img src="Resources/icons/gemini.svg" width="20" height="20" align="absmiddle" /> Built with AI Agents
+
+> [!NOTE]
+> This project is built and evolved collaboratively with **autonomous AI agents** powered by **Google DeepMind's Gemini models**.
+>
+> From native macOS Swift & SwiftUI architecture, POSIX PTY pseudo-terminal subsystems, and Language Server Protocol implementations to self-hosted Apple Silicon CI/CD pipelines — every architectural decision and implementation detail is paired with automated AI coding assistants, prioritizing transparency and best engineering practices.
+
