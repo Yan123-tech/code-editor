@@ -55,6 +55,12 @@ struct CodeEditorApp: App {
             }
             .keyboardShortcut("f", modifiers: .command)
             .disabled(appState.documentManager.activeDocument == nil)
+
+            Button("Find in Workspace…") {
+                appState.showWorkspaceSearch()
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .disabled(appState.fileSystemManager.rootURL == nil)
         }
 
         CommandGroup(after: .toolbar) {
@@ -94,6 +100,17 @@ struct CodeEditorApp: App {
             }
             .keyboardShortcut("b", modifiers: .command)
 
+            Button("Show Project Navigator") {
+                if !appState.isSidebarVisible { appState.isSidebarVisible = true }
+                appState.activeSidebarTab = .files
+            }
+            .keyboardShortcut("1", modifiers: .command)
+
+            Button("Show Find Navigator") {
+                appState.showWorkspaceSearch()
+            }
+            .keyboardShortcut("4", modifiers: .command)
+
             Toggle(
                 "Status Bar",
                 isOn: Binding(
@@ -114,7 +131,7 @@ struct CodeEditorApp: App {
             Button("Format Document") {
                 appState.formatActiveDocument()
             }
-            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .keyboardShortcut("f", modifiers: [.shift, .option])
             .disabled(appState.documentManager.activeDocument == nil)
 
             Toggle(

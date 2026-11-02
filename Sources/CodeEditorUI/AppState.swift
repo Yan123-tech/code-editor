@@ -46,6 +46,19 @@ public final class AppState {
     // Diagnostic navigation
     public var diagnosticJumpRequest: DiagnosticJumpRequest?
 
+    // Sidebar Navigation
+    public var activeSidebarTab: SidebarTab = .files
+
+    // Workspace Search
+    public var workspaceSearchOptions = WorkspaceSearchOptions()
+    public var isReplaceVisible = false
+    public var isFilterVisible = false
+    public private(set) var workspaceSearchResults: [WorkspaceSearchFileResult] = []
+    public private(set) var isWorkspaceSearching = false
+    public private(set) var workspaceSearchError: String?
+    public var searchJumpRequest: SearchJumpRequest?
+    private var workspaceSearchTask: Task<Void, Never>?
+
     /// Terminal panel height in points, persisted. Drag-resized, never fixed.
     public var terminalHeight: Double
 
@@ -110,6 +123,8 @@ public final class AppState {
         terminal.projectRootDirectory = url
         terminal.clear()
         quickOpenIndex.reindex(root: url)
+        workspaceSearchTask?.cancel()
+        workspaceSearchResults = []
         RecentProjectsStore.record(url: url)
         recentProjects = RecentProjectsStore.load()
         persistSession()
@@ -153,6 +168,7 @@ public final class AppState {
                 quickOpenIndex.reindex(root: root)
                 terminal.workingDirectory = root
                 terminal.projectRootDirectory = root
+                workspaceSearchResults = []
             } else {
                 SessionStore.clear()
             }
@@ -570,6 +586,106 @@ public final class AppState {
         diagnosticJumpRequest = DiagnosticJumpRequest(diagnostic: diagnostic)
     }
 
+    // MARK: - Workspace Search
+
+    public func performWorkspaceSearch() {
+        workspaceSearchTask?.cancel()
+        workspaceSearchError = nil
+
+        guard let root = fileSystemManager.rootURL else {
+            workspaceSearchResults = []
+            isWorkspaceSearching = false
+            return
+        }
+
+        guard !workspaceSearchOptions.query.isEmpty else {
+            workspaceSearchResults = []
+            isWorkspaceSearching = false
+            return
+        }
+
+        let options = workspaceSearchOptions
+        let openDocs = documentManager.documents
+        let snapshots = openDocs.compactMap { doc -> OpenDocumentSnapshot? in
+            guard let url = doc.url else { return nil }
+            return OpenDocumentSnapshot(url: url, content: doc.content)
+        }
+
+        isWorkspaceSearching = true
+        workspaceSearchTask = Task {
+            do {
+                let results = try await WorkspaceSearchEngine.search(
+                    root: root,
+                    options: options,
+                    openSnapshots: snapshots
+                )
+                guard !Task.isCancelled else { return }
+                self.workspaceSearchResults = results
+                self.isWorkspaceSearching = false
+            } catch is CancellationError {
+                // Ignore cancellation
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.workspaceSearchError = error.localizedDescription
+                self.isWorkspaceSearching = false
+            }
+        }
+    }
+
+    public func showWorkspaceSearch() {
+        if !isSidebarVisible {
+            isSidebarVisible = true
+        }
+        activeSidebarTab = .search
+    }
+
+    public func jumpTo(searchMatch: WorkspaceSearchMatch) {
+        Task {
+            do {
+                let doc = try await openFileThrowing(searchMatch.fileURL)
+                documentManager.activate(doc)
+                searchJumpRequest = SearchJumpRequest(
+                    fileURL: searchMatch.fileURL,
+                    lineNumber: searchMatch.lineNumber,
+                    column: searchMatch.column,
+                    length: searchMatch.matchedText.count
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    public func replaceInWorkspace(match: WorkspaceSearchMatch, with replacement: String) {
+        do {
+            let openDoc = documentManager.documents.first(where: {
+                $0.url?.standardizedFileURL.path == match.fileURL.standardizedFileURL.path
+            })
+            try WorkspaceSearchEngine.replaceMatch(
+                match,
+                replacement: replacement,
+                openDocument: openDoc
+            )
+            performWorkspaceSearch()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func replaceAllInWorkspace() {
+        do {
+            _ = try WorkspaceSearchEngine.replaceAll(
+                files: workspaceSearchResults,
+                replacement: workspaceSearchOptions.replacement,
+                options: workspaceSearchOptions,
+                openDocuments: documentManager.documents
+            )
+            performWorkspaceSearch()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Tear down every language server. Call on workspace switch and on quit.
     public func disconnectLanguageServers() {
         let clients = Array(languageServers.values)
@@ -589,6 +705,23 @@ public struct DiagnosticJumpRequest: Equatable, Sendable {
     public init(diagnostic: DocumentDiagnostic) {
         self.id = UUID()
         self.diagnostic = diagnostic
+    }
+}
+
+/// Carries a search match jump target to scroll, select, and emphasize in the editor.
+public struct SearchJumpRequest: Equatable, Sendable {
+    public let id: UUID
+    public let fileURL: URL
+    public let lineNumber: Int
+    public let column: Int
+    public let length: Int
+
+    public init(fileURL: URL, lineNumber: Int, column: Int, length: Int) {
+        self.id = UUID()
+        self.fileURL = fileURL
+        self.lineNumber = lineNumber
+        self.column = column
+        self.length = length
     }
 }
 
