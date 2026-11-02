@@ -481,7 +481,7 @@ public final class Document: Identifiable {
         }
         let data = Data(content.utf8)
         do {
-            try await Task.detached { try data.write(to: url) }.value
+            try await Task.detached { try data.write(to: url, options: .atomic) }.value
         } catch {
             throw DocumentError.failedToWrite(url, error.localizedDescription)
         }
