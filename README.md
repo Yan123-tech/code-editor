@@ -266,6 +266,3 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 > [!NOTE]
 > This project is built and evolved collaboratively with **autonomous AI agents** powered by **Google DeepMind's Gemini models**.
->
-> From native macOS Swift & SwiftUI architecture, POSIX PTY pseudo-terminal subsystems, and Language Server Protocol implementations to self-hosted Apple Silicon CI/CD pipelines — every architectural decision and implementation detail is paired with automated AI coding assistants, prioritizing transparency and best engineering practices.
-
