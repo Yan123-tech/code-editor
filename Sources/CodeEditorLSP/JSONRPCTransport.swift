@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 
 public enum TransportError: Error, LocalizedError {
@@ -24,13 +25,14 @@ public enum TransportError: Error, LocalizedError {
 
 /// Owns the language server subprocess and speaks LSP's `Content-Length` framing over pipes.
 ///
-/// Reads are drained continuously on a background queue, accumulated into a buffer, and
-/// split into complete messages. Every request is parked in a continuation until a
-/// response with a matching id arrives.
+/// Reads are drained continuously on a background queue using native `DispatchSourceRead`,
+/// accumulated into a buffer, and split into complete messages. Every request is parked
+/// in a continuation until a response with a matching id arrives.
 public actor JSONRPCTransport {
     private var process: Process?
     private var writeHandle: FileHandle?
     private var readHandle: FileHandle?
+    private var readSource: (any DispatchSourceRead)?
     /// Held open by `startForTesting` so writes to the test pipe don't trip SIGPIPE.
     private var testPipe: Pipe?
 
@@ -51,7 +53,9 @@ public actor JSONRPCTransport {
     /// second in practice; 10s is generous headroom.
     private static let requestTimeoutNanoseconds: UInt64 = 10 * 1_000_000_000
 
-    public init() {}
+    public init() {
+        signal(SIGPIPE, SIG_IGN)
+    }
 
     public var isConnected: Bool { isRunning }
 
@@ -103,15 +107,14 @@ public actor JSONRPCTransport {
         self.isRunning = true
         self.nextId = 1
 
-        startReading()
+        startReading(output.fileHandleForReading.fileDescriptor)
     }
 
     public func stop() {
-        // Clear readabilityHandler and drop reference to readHandle without
-        // forcibly closing it; closing while a queued readability block is in
-        // flight throws NSFileHandleOperationException (Bad file descriptor).
-        // ARC closes the underlying descriptor safely when all references drop.
-        readHandle?.readabilityHandler = nil
+        if let readSource {
+            readSource.cancel()
+            self.readSource = nil
+        }
         readHandle = nil
         try? writeHandle?.close()
         writeHandle = nil
@@ -145,6 +148,7 @@ public actor JSONRPCTransport {
         self.testPipe = pipe
         self.writeHandle = pipe.fileHandleForWriting
         self.readHandle = nil
+        self.readSource = nil
     }
 
     /// The ids of requests currently waiting on a response. Used to wait for a parked
@@ -153,16 +157,34 @@ public actor JSONRPCTransport {
 
     // MARK: - Reading
 
-    private func startReading() {
-        readHandle?.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty else {
-                handle.readabilityHandler = nil
-                Task { await self?.handleServerClosed() }
-                return
-            }
-            Task { await self?.ingest(data) }
+    private func startReading(_ fd: Int32) {
+        let flags = fcntl(fd, F_GETFL)
+        if flags >= 0 {
+            _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
         }
+
+        let source = DispatchSource.makeReadSource(
+            fileDescriptor: fd,
+            queue: DispatchQueue.global(qos: .userInitiated)
+        )
+        source.setEventHandler { [weak self, source] in
+            var buf = [UInt8](repeating: 0, count: 65536)
+            let bytesRead = Darwin.read(fd, &buf, buf.count)
+            if bytesRead > 0 {
+                let data = Data(buf[0..<bytesRead])
+                Task { await self?.ingest(data) }
+            } else if bytesRead == 0 {
+                source.cancel()
+                Task { await self?.handleServerClosed() }
+            } else {
+                if errno != EAGAIN && errno != EWOULDBLOCK {
+                    source.cancel()
+                    Task { await self?.handleServerClosed() }
+                }
+            }
+        }
+        source.resume()
+        self.readSource = source
     }
 
     private static let queueKey = DispatchSpecificKey<Void>()
@@ -329,6 +351,10 @@ public actor JSONRPCTransport {
     internal func handleServerClosed() {
         guard isRunning else { return }
         isRunning = false
+        if let readSource {
+            readSource.cancel()
+            self.readSource = nil
+        }
         for (_, continuation) in pending {
             continuation.resume(throwing: TransportError.notConnected)
         }
