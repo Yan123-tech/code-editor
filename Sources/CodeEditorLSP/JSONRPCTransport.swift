@@ -107,8 +107,11 @@ public actor JSONRPCTransport {
     }
 
     public func stop() {
+        // Clear readabilityHandler and drop reference to readHandle without
+        // forcibly closing it; closing while a queued readability block is in
+        // flight throws NSFileHandleOperationException (Bad file descriptor).
+        // ARC closes the underlying descriptor safely when all references drop.
         readHandle?.readabilityHandler = nil
-        readHandle?.closeFile()
         readHandle = nil
         try? writeHandle?.close()
         writeHandle = nil
@@ -154,6 +157,7 @@ public actor JSONRPCTransport {
         readHandle?.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else {
+                handle.readabilityHandler = nil
                 Task { await self?.handleServerClosed() }
                 return
             }
